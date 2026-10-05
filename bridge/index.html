@@ -316,6 +316,9 @@
     body.float #stage { height: 150px; padding-top: 50px; -webkit-app-region: drag; }
     body.float dot-pal { -webkit-app-region: no-drag; cursor: grab; touch-action: none; }
     body.dragging, body.dragging dot-pal { cursor: grabbing; }
+    /* While the window resizes (the chat bubble opens or closes) the bar jumps, no slide:
+       a sliding bar in a resizing transparent window shows twice on Windows. */
+    body.resizing .bar, body.resizing .chat { transition: none !important; }
     body.float #first { max-width: 76px; padding: 2px 4px; font-size: 12px; }
 
     /* Compact: just the pal, floating on the desktop. Two round buttons fade in
@@ -391,7 +394,9 @@
     .chat-row { display: flex; gap: 6px; align-items: stretch; }
     .chat textarea { flex: 1; resize: none; min-height: 38px; max-height: 120px; }
     .chat :is(textarea, .chat-dir):focus-visible { outline: 2px solid var(--k-read); outline-offset: 0; }
-    .chat button[type="submit"] { padding: 0 14px; font-weight: 600; background: var(--ok); border-color: var(--ok); color: #06140a; }
+    /* Send: a small pill sitting at the textarea's bottom edge, not a slab stretched to its height. */
+    .chat button[type="submit"] { flex: none; align-self: flex-end; height: 30px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 600; line-height: 1; background: var(--ok); border-color: var(--ok); color: #06140a; }
+    .chat button[type="submit"]:not([disabled]):hover { filter: brightness(1.1); }
     .chat button[disabled] { opacity: .55; cursor: default; }
     .chat-note { margin: 0; color: var(--muted); font-size: 11px; }
     .chat-note:empty { display: none; }
@@ -411,7 +416,15 @@
     body.compact #talk { display: grid; }
     body.compact.talking #talk { background: var(--k-read); color: var(--bg); }
     /* A speech bubble above the pal's head (the window grows upward to make room: desktop/main.js). */
-    body.compact.talking .chat { display: grid; position: absolute; left: 8px; right: 8px; bottom: calc(100% - var(--pill-top, 200px) + 12px); z-index: 9; padding: 8px; border: 1px solid color-mix(in srgb, var(--k-read) 55%, var(--line)); border-radius: 14px; background: #16161c; box-shadow: 0 8px 22px rgb(0 0 0 / .45); animation: ask-in .3s cubic-bezier(.2, 1.3, .35, 1); overflow: visible; }
+    /* The bubble's bottom is pinned 12px above the pill, and --pill-top moves up whenever the
+       pal shows its own speech bubble (e.g. when the reply lands). So its height is capped to the
+       room left above the pill (8px gap at the window top); only the reply shrinks and scrolls,
+       the textarea and Send always stay visible. */
+    body.compact.talking .chat { display: flex; flex-direction: column; gap: 5px; position: absolute; left: 8px; right: 8px; bottom: calc(100% - var(--pill-top, 200px) + 12px); max-height: max(110px, calc(var(--pill-top, 200px) - 20px)); z-index: 9; padding: 8px; border: 1px solid color-mix(in srgb, var(--k-read) 55%, var(--line)); border-radius: 14px; background: #16161c; box-shadow: 0 8px 22px rgb(0 0 0 / .45); animation: ask-in .3s cubic-bezier(.2, 1.3, .35, 1); transition: bottom .25s ease, max-height .25s ease; overflow: visible; }
+    body.compact.talking .chat > * { flex: none; }
+    body.compact.talking .chat > .chat-reply { flex: 0 1 auto; min-height: 34px; }
+    body.compact.talking .chat textarea { max-height: 72px; }
+    body.compact.talking .chat button[type="submit"] { height: 28px; padding: 0 10px; font-size: 11.5px; border-radius: 7px; }
     body.compact.talking .chat::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 12px; height: 12px; margin-left: -6px; background: #16161c; border-right: 1px solid color-mix(in srgb, var(--k-read) 55%, var(--line)); border-bottom: 1px solid color-mix(in srgb, var(--k-read) 55%, var(--line)); transform: rotate(45deg); }
     body.compact.talking .chat-dir { display: none; }
     body.compact.talking .chat textarea { min-height: 34px; }
@@ -423,6 +436,7 @@
     .ask.oc small { color: var(--k-read); }
     .ask.oc .row { margin-top: 6px; flex-wrap: wrap; }
     .ask.oc .oc-fill { flex: 1; }
+    .ask .keys { margin-top: 4px; color: var(--faint); font-size: 10px; text-align: right; }
     .oc-opts { display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0 6px; }
     .oc-opts button { padding: 3px 10px; font-size: 12px; font-weight: 500; border-radius: 999px; }
     .oc-opts button[aria-pressed="true"] { background: var(--k-read); border-color: var(--k-read); color: var(--bg); }
@@ -454,7 +468,7 @@
   <div class="card">
     <main id="stage">
       <!-- A pal waits here from the start (also in small mode), until an agent's own pal takes over. -->
-      <div class="empty slot" id="empty"><dot-pal id="empty-pal" idle="float"></dot-pal><span id="empty-text">Waiting for your agent…</span></div>
+      <div class="empty slot" id="empty"><dot-pal id="empty-pal" idle="float" playful hands></dot-pal><span id="empty-text">Waiting for your agent…</span></div>
     </main>
 
     <!-- The bars come after the stage on purpose: on Windows, Electron applies drag regions in
@@ -869,11 +883,21 @@
         const time = el('span', 'time');
         time.style.animationDuration = `${left}ms`;
         card.append(row, time);
+        if (isFloat) card.append(el('div', 'keys', KEYS_HINT));
         return card;
       }));
       box.append(...ocCards()); // OpenCode's requests (below)
       if (isFloat) refreshDragRegions();
+      // Ctrl+Alt+Y / N answer the top permission card: the keys are only held while one waits.
+      const permits = asks.size + [...ocAsks.values()].filter((a) => a.kind === 'permission').length;
+      desktop?.approveKeys?.(permits > 0)?.catch?.(() => {});
     }
+    const KEYS_HINT = desktop?.platform === 'darwin' ? '⌘⌥Y / N' : 'Ctrl+Alt+Y / N';
+    desktop?.onApprove?.((decision) => {
+      // The top card that's a permission (OpenCode's questions have options instead): click its button.
+      const card = [...document.querySelectorAll('.asks .ask:not(.gone)')].find((c) => !c.querySelector('.oc-opts') && c.querySelector('.allow'));
+      card?.querySelector(decision === 'allow' ? '.allow' : '.deny')?.click();
+    });
 
     // -- OpenCode permission requests and questions ----------------------------------------
     // From sessions started in the pal (bridge/chat.js). They show as cards over the pal,
@@ -932,6 +956,7 @@
           if (a.canAlways) row.append(button('', 'Always', () => answerOc(a, { reply: 'always' }, card, note)));
           row.append(button('allow', 'Allow', () => answerOc(a, { reply: 'once' }, card, note)));
           card.append(row, note);
+          if (isFloat) card.append(el('div', 'keys', KEYS_HINT));
         } else {
           card.setAttribute('aria-label', 'OpenCode asks');
           const picks = a.questions.map(() => new Set());
@@ -1057,11 +1082,23 @@
       e.preventDefault();
       setPalScale(palScale + (e.deltaY < 0 ? 0.1 : -0.1));
     }, { passive: false });
+    const palCount = () => Math.max([...slots.values()].filter((s) => !s.el.hidden).length, 1);
+    // Small mode: each pal keeps a good size and the window grows sideways instead
+    // (room for its hands too), so several agents' pals never get cut off.
+    const compactPal = (n) => Math.max(80, Math.round(150 * palScale) - Math.min(n - 1, 3) * 15);
+    const compactWidth = (n) => n * (compactPal(n) + 16) + 12 * (n - 1) + 24;
+    let sentWidth = 0;
+    function fitWindow() {
+      if (!document.body.classList.contains('compact')) return;
+      const want = compactWidth(palCount());
+      if (want !== sentWidth) { sentWidth = want; desktop?.setPalWidth?.(want); }
+    }
     const palSize = () => {
-      const base = document.body.classList.contains('compact') ? Math.round(150 * palScale) : isFloat ? 100 : 160;
-      const n = Math.max([...slots.values()].filter((s) => !s.el.hidden).length, 1);
-      const fit = Math.floor((stage.clientWidth - 24 - 12 * (n - 1)) / n);
-      return Math.max(56, Math.min(base - Math.min(n - 1, 3) * 20, fit || base));
+      const compact = document.body.classList.contains('compact');
+      const n = palCount();
+      const base = compact ? compactPal(n) : (isFloat ? 100 : 160) - Math.min(n - 1, 3) * 20;
+      const fit = Math.floor((stage.clientWidth - 24 - 12 * (n - 1)) / n) - (compact ? 16 : 0);
+      return Math.max(56, Math.min(base, fit || base));
     };
 
     function slotFor(update) {
@@ -1073,6 +1110,8 @@
       const pal = document.createElement('dot-pal');
       pal.character = i === 0 ? first : cast[(cast.indexOf(first) + i) % cast.length];
       pal.setAttribute('idle', 'float'); // drift gently when there's nothing going on
+      pal.setAttribute('playful', ''); // little idle hops, and it likes being petted
+      pal.setAttribute('hands', ''); // little hands: waves and high fives
       const label = el('span');
       box.append(pal, label);
       stage.append(box);
@@ -1127,6 +1166,7 @@
     setInterval(placePill, 300);
 
     function resizePals() {
+      fitWindow();
       $('empty-pal').setAttribute('size', String(palSize()));
       const visible = [...slots.values()].filter((s) => !s.el.hidden);
       stage.classList.toggle('solo', visible.length <= 1);
@@ -1171,6 +1211,7 @@
     }
 
     function applyState(update) {
+      const was = sessions.get(update.session)?.state; // to spot a fresh switch to done (high five)
       touchSession(update);
       if (document.body.classList.contains('compact') && slots.has(update.session) && slots.get(update.session).el.hidden !== !slotShown(update.session)) queueMicrotask(() => { syncSlots(); renderSessions(); });
       stateSound(update);
@@ -1182,6 +1223,7 @@
       treatSince.delete(slot.pal); // a fresh event: the treat's clock resets for this pal
       slot.pal.hideFood?.();
       slot.pal.setState(update.state, { text: bubbleText(update) });
+      if (update.state === 'done' && was !== 'done' && fresh(update.at)) highFiveDone(slot);
       if (update.state === 'sleeping') {
         setTimeout(() => {
           slot.el.remove();
@@ -1202,14 +1244,13 @@
         if (!s || ACTIVE.includes(s.state) || Date.now() - s.lastAt < DOZE || slot.pal.state === 'sleeping') continue;
         slot.pal.setState('sleeping');
       }
-      // The empty pal has been waiting a minute with no agent: a little treat appears
-      // beside it so you can feed it. One treat per idle spell; the next event or the
-      // doze takes it away.
+      // A visible pal has been idle a while: a little treat appears beside it so you
+      // can feed it. One treat per idle spell; the next event or the doze takes it away.
       tickFood();
     }, 20_000);
 
     // -- feeding the idle pal --------------------------------------------------------
-    // After 60 s of idling (no active agent on that pal), a little treat appears
+    // After 3 minutes of idling (no active agent on that pal), a little treat appears
     // beside it. Clicking it feeds the pal (a happy hop + chomp + hearts).
     // Works on any visible pal: the empty pal when no agents are connected, or
     // an agent's pal when its session is quiet. One treat per idle spell.
@@ -1247,6 +1288,93 @@
       for (const s of sessions.values()) if (ACTIVE.includes(s.state)) return true;
       return false;
     }
+
+    // -- pals together ------------------------------------------------------------------
+    // Visible agent pals, left to right, with their session ids.
+    function shownPals() {
+      const list = [];
+      for (const [id, s] of slots) if (!s.el.hidden) list.push({ id, pal: s.pal, x: s.pal.getBoundingClientRect().left });
+      return list.sort((a, b) => a.x - b.x);
+    }
+    const calmPal = (p) => !ACTIVE.includes(sessions.get(p.id)?.state) && p.pal.state !== 'sleeping';
+    const centerX = (pal) => { const r = pal.getBoundingClientRect(); return r.left + r.width / 2; };
+    function nearestTo(pal) {
+      const cx = centerX(pal);
+      let best = null;
+      for (const p of shownPals()) {
+        if (p.pal === pal) continue;
+        const d = Math.abs(centerX(p.pal) - cx);
+        if (!best || d < best.d) best = { pal: p.pal, d };
+      }
+      return best?.pal ?? null;
+    }
+    // Every 20–40 s, two calm neighbours glance at each other.
+    (function glanceLoop() {
+      setTimeout(() => {
+        const list = shownPals();
+        const pairs = [];
+        for (let i = 0; i + 1 < list.length; i++) if (calmPal(list[i]) && calmPal(list[i + 1])) pairs.push([list[i], list[i + 1]]);
+        if (pairs.length) {
+          const [l, r] = pairs[Math.floor(Math.random() * pairs.length)];
+          l.pal.glance?.('right', 1600);
+          r.pal.glance?.('left', 1600);
+        }
+        glanceLoop();
+      }, 20_000 + Math.random() * 20_000);
+    })();
+    // A session just finished: its pal and the nearest visible one high-five.
+    function highFiveDone(slot) {
+      if (slot.el.hidden) return;
+      const other = nearestTo(slot.pal);
+      if (!other) return;
+      const right = centerX(other) > centerX(slot.pal);
+      slot.pal.highFive?.(right ? 'right' : 'left');
+      other.highFive?.(right ? 'left' : 'right');
+    }
+    // Petting one pal: a neighbour looks over.
+    stage.addEventListener('dotpal-pet', (e) => {
+      const pal = e.composedPath().find((n) => n.localName === 'dot-pal');
+      if (!pal) return;
+      const other = nearestTo(pal);
+      if (other) other.glance?.(centerX(pal) > centerX(other) ? 'right' : 'left', 1800);
+    });
+
+    // -- welcome back -------------------------------------------------------------------
+    // The app reports how long you've had no keyboard or mouse input. After 5 minutes
+    // away, coming back makes the pals jump, and one tells you what happened meanwhile.
+    const AWAY_AFTER = 5 * 60; // seconds
+    let awaySince = 0;
+    function awaySummary(since) {
+      let done = 0, errors = 0, failing = 0;
+      for (const { entry } of entries.values()) {
+        if (entry.at < since) continue;
+        if (entry.kind === 'done') done++;
+        else if (entry.kind === 'error') errors++;
+      }
+      for (const s of sessions.values()) {
+        if (s.lastAt < since) continue;
+        try { if (testLine(stepsOf(s.id))?.level === 'bad') failing++; } catch {}
+      }
+      const waiting = asks.size + ocAsks.size;
+      const parts = [
+        done && `${done} done`,
+        errors && `${errors} ${errors === 1 ? 'error' : 'errors'}`,
+        failing && `${failing} failing ${failing === 1 ? 'test run' : 'test runs'}`,
+        waiting && `${waiting} waiting for you`,
+      ].filter(Boolean);
+      return parts.length ? `Welcome back! While you were away: ${parts.join(', ')}.` : 'Welcome back! All quiet.';
+    }
+    desktop?.onPalIdle?.((idle) => {
+      if (idle >= AWAY_AFTER) { if (!awaySince) awaySince = Date.now() - idle * 1000; return; }
+      if (!awaySince || idle >= 3) return;
+      const text = awaySummary(awaySince);
+      awaySince = 0; // one summary per away spell
+      const shown = shownPals().map((p) => p.pal);
+      const pals = shown.length ? shown : $('empty').hidden ? [] : [$('empty-pal')];
+      for (const pal of pals) pal.startle?.();
+      const first = pals[0];
+      if (first) setTimeout(() => { first.wave?.(); first.say?.(text, { duration: 9000 }); }, 700);
+    });
 
     // Electron on Windows keeps the old drag regions after the window resizes, so
     // buttons, tabs and links stop taking clicks. Nudging a drag region makes it re-measure.
@@ -2152,12 +2280,18 @@
       syncChat();
       // Small mode: the speech-bubble button opens the chat over the pal; Esc closes it.
       const setTalking = async (on) => {
+        // The bar jumps with the window: no slide, or it shows twice for a moment.
+        document.body.classList.add('resizing');
+        // Closing: hide the chat before the window shrinks, so nothing is left behind.
+        if (!on) document.body.classList.remove('talking');
         // Grow the window upward first, so the bubble lands above the head, not on it.
         await desktop?.setTalking?.(on);
         document.body.classList.toggle('talking', on);
         $('talk').setAttribute('aria-pressed', String(on));
         if (on) text.focus();
         resizePals();
+        placePill(); // right away, not on the next 300 ms tick
+        requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('resizing')));
       };
       window.dotpalsSetTalking = setTalking;
 
@@ -2171,8 +2305,9 @@
         reply.replaceChildren(el('small', '', label), document.createTextNode(body));
         reply.scrollTop = 0;
       };
+      let replyHold = 0; // another session's reply is on show: don't cover it with "working" yet
       setInterval(() => {
-        if (!waitingFor) return;
+        if (!waitingFor || Date.now() < replyHold) return;
         const s = sessions.get(waitingFor);
         showReply('working', 'OpenCode', s?.state === 'waiting' ? 'Waiting for your answer above…' : s?.text || 'Working on it…');
       }, 1000);
@@ -2180,7 +2315,10 @@
       window.dotpalsChatDone = (entry) => {
         if (!document.body.classList.contains('chat-on') || !entry.session?.startsWith('opencode:')) return;
         if (entry.session !== waitingFor && entry.session !== target()) return;
-        waitingFor = null;
+        // Only the session we're waiting on ends the wait; another one finishing (the chat's
+        // current target) still shows its reply, and the pending one picks up after a while.
+        if (entry.session === waitingFor) { waitingFor = null; replyHold = 0; }
+        else if (waitingFor) replyHold = Date.now() + 8000;
         const bad = entry.kind === 'error';
         showReply(bad ? 'bad' : '', `OpenCode · ${sessions.get(entry.session)?.label || 'reply'}`, bad ? entry.title || 'Stopped with an error' : entry.summary || 'Done (no reply text).');
         if (document.body.classList.contains('compact') && !document.body.classList.contains('talking')) setTalking(true);

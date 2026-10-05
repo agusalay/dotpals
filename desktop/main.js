@@ -209,10 +209,11 @@ if (!app.requestSingleInstanceLock()) {
 
   // The size the window should be right now (never read back from Windows, which drifts with scaling).
   let talking = false; // the chat bubble is open in small mode
+  let compactWidth = SIZE.compact.width; // small mode: wider when several pals are on show (the page asks)
   const intendedSize = () => {
     if (!prefs.compact) return { ...SIZE.full, height: prefs.height ?? SIZE.full.height };
     const k = Math.max(1, (loadConfig().palSize ?? 100) / 100); // Settings → Pal size: over 100%, a bigger window
-    return { width: Math.round(SIZE.compact.width * k), height: Math.round(SIZE.compact.height * k) + (talking ? TALK_EXTRA : 0) };
+    return { width: Math.max(Math.round(SIZE.compact.width * k), compactWidth), height: Math.round(SIZE.compact.height * k) + (talking ? TALK_EXTRA : 0) };
   };
 
   function createWindow() {
@@ -420,6 +421,10 @@ if (!app.requestSingleInstanceLock()) {
   const NOTCH_KEYS = { escape: 'Escape', allow: 'CommandOrControl+Alt+Y', deny: 'CommandOrControl+Alt+N' };
   const notchKeysOn = new Set();
   let notchKeysWanted = { escape: false, approval: false };
+  // The pal window's permission cards use the same two keys (see applyPalKeys).
+  const PAL_KEYS = { allow: NOTCH_KEYS.allow, deny: NOTCH_KEYS.deny };
+  const palKeysOn = new Set();
+  let palKeysWanted = false;
   function applyNotchKeys() {
     const on = !!notch && !notch.isDestroyed() && notch.isVisible();
     const want = new Set();
@@ -432,10 +437,12 @@ if (!app.requestSingleInstanceLock()) {
     }
     for (const key of want) {
       if (notchKeysOn.has(key)) continue;
+      if (palKeysOn.has(key)) { try { globalShortcut.unregister(PAL_KEYS[key]); } catch {} palKeysOn.delete(key); } // the notch wins while it shows the card
       let ok = false;
       try { ok = globalShortcut.register(NOTCH_KEYS[key], () => { if (notch && !notch.isDestroyed()) notch.webContents.send('notch:key', key); }); } catch {}
       if (ok) notchKeysOn.add(key);
     }
+    applyPalKeys(); // the notch may have just let go of keys the pal wants
     return { escape: notchKeysOn.has('escape'), allow: notchKeysOn.has('allow'), deny: notchKeysOn.has('deny') };
   }
   ipcMain.handle('notch:keys', (event, want) => {
@@ -443,6 +450,31 @@ if (!app.requestSingleInstanceLock()) {
     notchKeysWanted = { escape: !!want?.escape, approval: !!want?.approval };
     return applyNotchKeys();
   });
+
+  // Ctrl+Alt+Y / Ctrl+Alt+N for the pal window's permission cards, registered only
+  // while one is pending. If the notch already holds them, the pal waits until it
+  // lets go (applyNotchKeys calls this again then).
+  function applyPalKeys() {
+    for (const [key, accel] of Object.entries(PAL_KEYS)) {
+      if (palKeysWanted && win && !win.isDestroyed()) {
+        if (palKeysOn.has(key) || notchKeysOn.has(key)) continue;
+        let ok = false;
+        try { ok = globalShortcut.register(accel, () => { if (win && !win.isDestroyed()) win.webContents.send('window:approve', key); }); } catch {}
+        if (ok) palKeysOn.add(key);
+        else console.warn(`[dotpals] ${accel} is taken by another app; the approval shortcut is off`);
+      } else if (palKeysOn.has(key)) {
+        try { globalShortcut.unregister(accel); } catch {}
+        palKeysOn.delete(key);
+      }
+    }
+  }
+  ipcMain.handle('window:approve-keys', (event, on) => {
+    if (!win || win.isDestroyed() || event.sender !== win.webContents) return false;
+    palKeysWanted = !!on;
+    applyPalKeys();
+    return palKeysOn.size === 2;
+  });
+  app.on('will-quit', () => { palKeysWanted = false; applyPalKeys(); });
 
   // The cursor, for the pals' eyes (they watch it anywhere on screen) and the notch's
   // hover: its position relative to each window's content, in CSS px, ~30 times a
@@ -474,6 +506,7 @@ if (!app.requestSingleInstanceLock()) {
     }, 33);
     setInterval(() => {
       if (notch && !notch.isDestroyed() && notch.isVisible()) notch.webContents.send('notch:idle', powerMonitor.getSystemIdleTime());
+      if (win && !win.isDestroyed()) win.webContents.send('window:idle', powerMonitor.getSystemIdleTime()); // the pal's "welcome back"
     }, 2000);
   }
   ipcMain.handle('usage', () => readUsage().catch(() => ({ agents: [] })));
@@ -528,6 +561,30 @@ if (!app.requestSingleInstanceLock()) {
     win.setResizable(true);
     win.setBounds({ x: x + w - next.width, y: Math.max(area.y, y + h - next.height), ...next });
     win.setResizable(false);
+    // Windows keeps old pixels in a transparent window that shrinks (a second, ghost bar):
+    // repaint the whole page now and once more after the resize settles.
+    repaint();
+  });
+  function repaint() {
+    win.webContents.invalidate();
+    setTimeout(() => { if (win && !win.isDestroyed()) win.webContents.invalidate(); }, 120);
+  }
+  // Small mode grows sideways when several agents' pals are on show, so none is cut
+  // off. The right and bottom edges stay put; never wider than the screen.
+  ipcMain.handle('window:pal-width', (event, width) => {
+    if (!win || win.isDestroyed() || event.sender !== win.webContents) return;
+    const area = screen.getDisplayMatching(win.getBounds()).workArea;
+    const want = Math.round(Math.min(area.width - 2 * MARGIN, Math.max(SIZE.compact.width, Number(width) || 0)));
+    if (want === compactWidth) return;
+    compactWidth = want;
+    if (!prefs.compact) return;
+    const [x, y] = win.getPosition();
+    const [w, h] = win.getSize();
+    const next = intendedSize();
+    win.setResizable(true);
+    win.setBounds({ x: Math.max(area.x, x + w - next.width), y: y + h - next.height, ...next });
+    win.setResizable(false);
+    repaint();
   });
   // Click-through for the transparent parts of the small window. The page sends the
   // areas that should take clicks (the round bar, a request card, the pals and their

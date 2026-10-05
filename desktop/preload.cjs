@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('dotpalsDesktop', {
   isCompact: () => ipcRenderer.invoke('window:is-compact'),
   /** Small mode: make room above the pal for the chat bubble. */
   setTalking: (on) => ipcRenderer.invoke('window:talk', on),
+  /** Small mode: the width several pals side by side need (the app clamps it to the screen). */
+  setPalWidth: (width) => ipcRenderer.invoke('window:pal-width', width),
   close: () => ipcRenderer.send('window:close'),
   show: () => ipcRenderer.send('window:show'),
   /** Show the pal in small mode (just the pal). */
@@ -90,5 +92,17 @@ contextBridge.exposeInMainWorld('dotpalsDesktop', {
   onIdle(callback) {
     ipcRenderer.removeAllListeners('notch:idle');
     ipcRenderer.on('notch:idle', (_, seconds) => callback(seconds));
+  },
+  /** onPalIdle(seconds): the same, for the pal window (every 2 s). */
+  onPalIdle(callback) {
+    ipcRenderer.removeAllListeners('window:idle');
+    ipcRenderer.on('window:idle', (_, seconds) => callback(seconds));
+  },
+  /** Ctrl+Alt+Y / N for the pal's permission cards: on while one is pending. Resolves true if both got registered. */
+  approveKeys: (on) => ipcRenderer.invoke('window:approve-keys', !!on),
+  /** onApprove('allow' | 'deny'): one of those shortcuts was pressed. */
+  onApprove(callback) {
+    ipcRenderer.removeAllListeners('window:approve');
+    ipcRenderer.on('window:approve', (_, decision) => callback(decision));
   },
 });
