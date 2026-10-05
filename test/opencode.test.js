@@ -74,6 +74,54 @@ test('the plugin posts what it sees, and never throws', async () => {
   }
 });
 
+test('the plugin reports permission requests and applies an answer from the pal', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dotpals-oc-plugin-'));
+  const file = join(dir, 'dotpals.mjs');
+  await writeFile(file, PLUGIN);
+  const sent = [];
+  const polls = [];
+  const replies = [];
+  let answer = null; // what /api/oc-answers hands out on the next poll
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (String(url).endsWith('/api/oc-answers')) {
+      polls.push({ url: String(url), headers: init.headers, body });
+      const out = answer ?? {};
+      answer = null;
+      return new Response(JSON.stringify({ answers: out }));
+    }
+    sent.push(body);
+    return new Response('{}');
+  };
+  const client = { permission: { reply: async (args) => { replies.push(args); return { data: true }; } } };
+  try {
+    const mod = await import(`file:///${file.replace(/\\/g, '/')}`);
+    const hooks = await mod.DotpalsPlugin({ directory: '/work/proj', worktree: '/work/proj', client, serverUrl: new URL('http://127.0.0.1:4096') }, { url: 'http://127.0.0.1:1/hook' });
+    await hooks.event({ event: { type: 'permission.asked', properties: { id: 'per_1', sessionID: 's', permission: 'bash', patterns: ['npm test'], always: ['npm *'] } } });
+    const ask = sent.find((b) => b.type === 'ask');
+    assert.deepEqual([ask.kind, ask.id, ask.sessionID, ask.permission, ask.canAlways], ['permission', 'per_1', 's', 'bash', true]);
+    assert.deepEqual(ask.patterns, ['npm test']);
+    assert.ok(sent.some((b) => b.type === 'event' && b.event.type === 'permission.asked'), 'still reported as activity too');
+
+    answer = { per_1: { kind: 'permission', reply: 'once' } };
+    for (let i = 0; i < 30 && !replies.length; i++) await new Promise((r) => setTimeout(r, 100));
+    assert.equal(polls[0].url, 'http://127.0.0.1:1/api/oc-answers');
+    assert.equal(polls[0].headers['x-dotpals'], '1');
+    assert.deepEqual(polls[0].body, { ids: ['per_1'] });
+    assert.deepEqual(replies, [{ requestID: 'per_1', reply: 'once', directory: '/work/proj' }]);
+
+    await hooks.event({ event: { type: 'question.replied', properties: { sessionID: 's', requestID: 'que_1' } } });
+    assert.deepEqual(sent.at(-1), { type: 'ask.done', id: 'que_1', sessionID: 's', cwd: '/work/proj', at: sent.at(-1).at });
+    const count = polls.length;
+    await new Promise((r) => setTimeout(r, 1300));
+    assert.ok(polls.length <= count + 1, 'stops polling once nothing is pending');
+  } finally {
+    globalThis.fetch = realFetch;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('OpenCode connect writes the plugin and disconnect puts back what was there', async (t) => {
   const dir = await mkdtemp(join(tmpdir(), 'dotpals-oc-'));
   process.env.DOTPALS_OPENCODE_DIR = dir;

@@ -204,6 +204,65 @@ test('chat: when OpenCode stops, its cards close (answering one is a 404, not a 
   assert.equal(chat.calls.length, 0, 'nothing sent to a server that is gone');
 });
 
+// OpenCode in a terminal: its plugin reports requests on /hook?agent=opencode and collects answers.
+const hook = (port, body) => fetch(`http://127.0.0.1:${port}/hook?agent=opencode`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cwd: project, at: Date.now(), ...body }) });
+const collect = (port, ids, headers) => api(port, '/api/oc-answers', { ids }, headers);
+
+test('terminal: a plugin permission request is a card even with chat off, and its answer is collected once', async (t) => {
+  const { port, chat } = await start(t, { chat: false });
+  await hook(port, { type: 'ask', kind: 'permission', id: 'per_t1', sessionID: 'ses_t', permission: 'bash', patterns: ['rm -rf dist'], canAlways: true });
+  const [card] = await ocAsks(port);
+  assert.deepEqual([card.id, card.kind, card.session, card.status, card.permission, card.canAlways], ['per_t1', 'permission', 'opencode:ses_t', 'pending', 'bash', true]);
+  assert.deepEqual(card.patterns, ['rm -rf dist']);
+  assert.equal(card.label, project.split(/[\\/]/).pop());
+
+  assert.deepEqual((await collect(port, ['per_t1'])).body, { answers: {} }, 'nothing to collect yet');
+  assert.equal((await api(port, '/api/chat/answer', { id: 'per_t1', reply: 'always' })).status, 200);
+  assert.ok(!chat.calls.some(([call]) => call === 'permission'), 'not sent to the pal’s own OpenCode');
+  assert.deepEqual((await collect(port, ['per_t1'])).body, { answers: { per_t1: { kind: 'permission', reply: 'always' } } });
+  assert.deepEqual((await collect(port, ['per_t1'])).body, { answers: {} }, 'handed out once');
+  assert.deepEqual(await ocAsks(port), [], 'the card is gone');
+});
+
+test('terminal: plugin questions are answered through the plugin too', async (t) => {
+  const { port } = await start(t);
+  await hook(port, { type: 'ask', kind: 'question', id: 'que_t1', sessionID: 'ses_t', questions: [{ question: 'Which?', header: 'Pick', options: [{ label: 'A', description: '' }], multiple: true }] });
+  const [card] = await ocAsks(port);
+  assert.deepEqual(card.questions, [{ question: 'Which?', header: 'Pick', options: [{ label: 'A', description: '' }], multiple: true, custom: true }]);
+  assert.equal((await api(port, '/api/chat/answer', { id: 'que_t1', answers: [['A']] })).status, 200);
+  assert.deepEqual((await collect(port, ['que_t1'])).body.answers.que_t1, { kind: 'question', answers: [['A']] });
+});
+
+test('terminal: answered in the TUI (ask.done) closes the card; bad ids and pages are refused', async (t) => {
+  const { port } = await start(t);
+  await hook(port, { type: 'ask', kind: 'permission', id: 'per_t2', sessionID: 'ses_t', permission: 'edit' });
+  const watching = ocAsks(port, 400);
+  await new Promise((r) => setTimeout(r, 100));
+  await hook(port, { type: 'ask.done', id: 'per_t2', sessionID: 'ses_t' });
+  assert.deepEqual((await watching).map((e) => [e.id, e.status]), [['per_t2', 'pending'], ['per_t2', 'answered']]);
+
+  await hook(port, { type: 'ask', kind: 'permission', id: '../x', sessionID: 'ses_t', permission: 'bash' });
+  await hook(port, { type: 'ask', kind: 'permission', id: 'per_ok', sessionID: 'ses t', permission: 'bash' });
+  assert.deepEqual(await ocAsks(port), [], 'invalid ids are ignored');
+
+  assert.equal((await collect(port, ['per_t2'], { origin: 'http://127.0.0.1:5175' })).status, 403, 'only the plugin, never a page');
+});
+
+test('terminal: with the OpenCode integration off, plugin requests show nothing', async (t) => {
+  const { port } = await start(t);
+  await api(port, '/api/config', { agents: { opencode: false } });
+  await hook(port, { type: 'ask', kind: 'permission', id: 'per_t3', sessionID: 'ses_t', permission: 'bash' });
+  assert.deepEqual(await ocAsks(port), []);
+  await api(port, '/api/config', { agents: { opencode: true } }); // the config file is shared by these tests
+});
+
+test('terminal: the pal’s own OpenCode stopping leaves terminal cards open', async (t) => {
+  const { port, chat } = await start(t);
+  await hook(port, { type: 'ask', kind: 'permission', id: 'per_t4', sessionID: 'ses_t', permission: 'bash' });
+  chat.exit();
+  assert.deepEqual((await ocAsks(port)).map((e) => e.id), ['per_t4']);
+});
+
 test('chat: turning it off stops the OpenCode server', async (t) => {
   const { port, chat } = await start(t);
   assert.equal((await api(port, '/api/config', { chat: false })).status, 200);

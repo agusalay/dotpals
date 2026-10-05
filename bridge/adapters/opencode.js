@@ -27,8 +27,9 @@ const file = () => join(dir(), 'plugins', 'dotpals.js');
 export const PLUGIN = `// ${MARKER}
 // Shows what OpenCode does in dotpals (a floating pal and a dashboard).
 // Added by the dotpals dashboard: Agents → OpenCode → Connect. Disconnect removes it.
-// Nothing here changes what OpenCode does; it only reports to http://127.0.0.1:5175.
-export const DotpalsPlugin = async ({ directory, worktree } = {}, options) => {
+// It reports to http://127.0.0.1:5175, and passes on answers you give in the pal to
+// OpenCode's permission requests and questions. Nothing else changes what OpenCode does.
+export const DotpalsPlugin = async ({ directory, worktree, client, serverUrl } = {}, options) => {
   const url = (options && options.url) || (globalThis.process && process.env.DOTPALS_URL) || "http://127.0.0.1:5175/hook"
   const cwd = worktree || directory || ""
   const texts = new Map() // session → the latest text it wrote
@@ -43,7 +44,78 @@ export const DotpalsPlugin = async ({ directory, worktree } = {}, options) => {
       }).catch(() => {})
     } catch {}
   }
-  const EVENTS = ["session.created", "session.idle", "session.error", "session.compacted", "permission.asked", "permission.replied"]
+  // Permission requests and questions: shown as cards in the pal. An answer given there
+  // is collected from the bridge and passed to OpenCode here, in-process.
+  const base = url.split("?")[0]
+  const bridge = base.slice(0, base.lastIndexOf("/"))
+  const pending = new Map() // request id → { kind, sessionID, directory }
+  let timer = null
+  let busy = false
+  const good = (r) => !!r && !r.error && !(r.response && r.response.ok === false)
+  const attempt = async (steps) => {
+    for (const step of steps) {
+      try { if (good(await step())) return true } catch {}
+    }
+    return false
+  }
+  const post = (path, body) => fetch(new URL(path, serverUrl), { method: "POST", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(5000) }).then((res) => (res.ok ? { ok: true } : { error: res.status }))
+  const raw = client && client._client
+  const answer = (id, ask, a) => {
+    const dir = ask.directory || cwd || undefined
+    if (a.kind === "permission") return attempt([
+      () => client.permission.reply({ requestID: id, reply: a.reply, directory: dir }),
+      () => raw.post({ url: "/permission/{requestID}/reply", path: { requestID: id }, body: { reply: a.reply }, headers: { "Content-Type": "application/json" } }),
+      () => client.postSessionIdPermissionsPermissionId({ path: { id: ask.sessionID, permissionID: id }, body: { response: a.reply } }),
+      () => post("/permission/" + encodeURIComponent(id) + "/reply", { reply: a.reply }),
+    ])
+    if (a.answers) return attempt([
+      () => client.question.reply({ requestID: id, answers: a.answers, directory: dir }),
+      () => raw.post({ url: "/question/{requestID}/reply", path: { requestID: id }, body: { answers: a.answers }, headers: { "Content-Type": "application/json" } }),
+      () => post("/question/" + encodeURIComponent(id) + "/reply", { answers: a.answers }),
+    ])
+    return attempt([
+      () => client.question.reject({ requestID: id, directory: dir }),
+      () => raw.post({ url: "/question/{requestID}/reject", path: { requestID: id } }),
+      () => post("/question/" + encodeURIComponent(id) + "/reject"),
+    ])
+  }
+  const poll = async () => {
+    if (!pending.size) { clearInterval(timer); timer = null; return }
+    if (busy) return
+    busy = true
+    try {
+      const res = await fetch(bridge + "/api/oc-answers", { method: "POST", headers: { "content-type": "application/json", "x-dotpals": "1" }, body: JSON.stringify({ ids: [...pending.keys()] }), signal: AbortSignal.timeout(2000) })
+      const data = res.ok ? await res.json() : {}
+      for (const [id, a] of Object.entries((data && data.answers) || {})) {
+        const ask = pending.get(id)
+        if (!ask) continue
+        pending.delete(id)
+        await answer(id, ask, a)
+      }
+    } catch {} finally { busy = false }
+  }
+  const watch = () => {
+    if (timer) return
+    timer = setInterval(poll, 1000)
+    if (timer && timer.unref) timer.unref()
+  }
+  const asked = (type, p) => {
+    if (!p.id || !p.sessionID) return
+    const kind = type === "question.asked" ? "question" : "permission"
+    pending.set(p.id, { kind, sessionID: p.sessionID, directory: p.directory })
+    if (pending.size > 50) pending.delete(pending.keys().next().value)
+    send(kind === "question"
+      ? { type: "ask", kind, id: p.id, sessionID: p.sessionID, questions: (p.questions || []).slice(0, 4).map((q) => ({ question: cut(String(q.question || ""), 500), header: cut(String(q.header || ""), 40), options: (q.options || []).slice(0, 8).map((o) => ({ label: cut(String(o.label || ""), 60), description: cut(String(o.description || ""), 200) })), multiple: !!q.multiple, custom: q.custom !== false })) }
+      : { type: "ask", kind, id: p.id, sessionID: p.sessionID, permission: cut(String(p.permission || p.type || p.title || ""), 120), patterns: (Array.isArray(p.patterns) ? p.patterns : p.pattern ? [].concat(p.pattern) : []).slice(0, 5).map((x) => cut(String(x), 300)), canAlways: Array.isArray(p.always) && p.always.length > 0 })
+    watch()
+  }
+  const settled = (p) => {
+    const id = p.requestID || p.permissionID || p.id
+    if (!id) return
+    pending.delete(id)
+    send({ type: "ask.done", id, sessionID: p.sessionID })
+  }
+  const EVENTS = ["session.created", "session.idle", "session.error", "session.compacted", "permission.asked", "permission.replied", "question.asked", "question.replied", "question.rejected"]
   return {
     "chat.message": async (input, output) => {
       try {
@@ -68,6 +140,9 @@ export const DotpalsPlugin = async ({ directory, worktree } = {}, options) => {
           return
         }
         if (!EVENTS.includes(event.type)) return
+        if (event.type === "permission.asked" || event.type === "question.asked") asked(event.type, p)
+        else if (event.type === "permission.replied" || event.type === "question.replied" || event.type === "question.rejected") settled(p)
+        if (event.type.startsWith("question.")) return
         const reply = event.type === "session.idle" ? texts.get(p.sessionID) : undefined
         if (event.type === "session.idle") texts.delete(p.sessionID)
         send({ type: "event", event: { type: event.type, properties: { sessionID: p.sessionID, error: p.error, permission: p.permission, reply: p.reply } }, reply: cut(reply, 4000) })

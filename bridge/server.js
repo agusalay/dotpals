@@ -52,6 +52,9 @@
 //   POST /api/chat/abort { session }   stop what that OpenCode session is doing
 //   POST /api/chat/answer { id, reply } | { id, answers }  answer an OpenCode permission request
 //                        (`ocask` events: once, always or reject) or question (null skips it)
+//   POST /api/oc-answers { ids } → { answers: { id: { kind, reply | answers } } } for the OpenCode
+//                        plugin: answers given in the pal to a terminal's requests, each once
+//                        (refused with an Origin header: never a web page)
 //   GET  /api/chat/projects → { projects: [{ path, name }] } folders agents worked in, newest first
 //   (every POST under /api needs the `x-dotpals: 1` header)
 //
@@ -174,6 +177,45 @@ export function startBridge({ port = Number(process.env.DOTPALS_PORT || process.
   // OpenCode's permission requests and questions, from sessions started in
   // the pal (bridge/chat.js), shown as cards with buttons. id → { kind, session, … }
   const ocAsks = new Map();
+  // The same requests from OpenCode sessions in a terminal (the TUI). Its plugin reports
+  // them (type 'ask' / 'ask.done' on POST /hook?agent=opencode); an answer from the pal
+  // waits here until the plugin collects it (POST /api/oc-answers) and replies to OpenCode
+  // itself. id → { kind, reply | answers, at }
+  const ocAnswers = new Map();
+  const OC_ASK_TTL = 10 * 60_000;
+  const ocQuestions = (list) => (Array.isArray(list) ? list : []).slice(0, 4).map((q) => ({
+    question: clip(String(q?.question ?? ''), 500), header: clip(String(q?.header ?? ''), 40),
+    options: (Array.isArray(q?.options) ? q.options : []).slice(0, 8).map((o) => ({ label: clip(String(o?.label ?? ''), 60), description: clip(String(o?.description ?? ''), 200) })),
+    multiple: !!q?.multiple, custom: q?.custom !== false,
+  }));
+  const OC_ID = /^[\w-]{1,120}$/;
+  function pluginAsk(e) {
+    const id = typeof e.id === 'string' && OC_ID.test(e.id) ? e.id : null;
+    const sid = typeof e.sessionID === 'string' && OC_ID.test(e.sessionID) ? e.sessionID : null;
+    if (!id || !sid) return;
+    const session = `opencode:${sid}`;
+    if (e.type === 'ask.done') {
+      ocAnswers.delete(id);
+      if (ocAsks.delete(id)) send('ocask', { id, session, status: 'answered' });
+      return;
+    }
+    if (ocAsks.has(id)) return; // already shown (e.g. a session started in the pal)
+    if (typeof e.cwd === 'string' && e.cwd) noteSession(session, e.cwd);
+    const label = folderName(sessionMeta.get(session)?.cwd ?? e.cwd) || 'OpenCode';
+    const item = e.kind === 'question'
+      ? { id, kind: 'question', session, label, questions: ocQuestions(e.questions), via: 'plugin', at: Date.now() }
+      : { id, kind: 'permission', session, label, permission: clip(String(e.permission ?? ''), 120), patterns: (Array.isArray(e.patterns) ? e.patterns : []).slice(0, 5).map((x) => clip(String(x), 300)), canAlways: !!e.canAlways, via: 'plugin', at: Date.now() };
+    if (item.kind === 'question' && !item.questions.length) return;
+    ocAsks.set(id, item);
+    send('ocask', { ...item, status: 'pending' });
+  }
+  // Answers nobody collected and cards nobody answered (OpenCode closed): dropped after a while.
+  const ocReaper = setInterval(() => {
+    const old = Date.now() - OC_ASK_TTL;
+    for (const [id, a] of ocAnswers) if (a.at < old) ocAnswers.delete(id);
+    for (const [id, item] of ocAsks) if (item.via === 'plugin' && item.at < old) { ocAsks.delete(id); send('ocask', { id, session: item.session, status: 'answered' }); }
+  }, 60_000);
+  ocReaper.unref?.();
   const chat = makeChat({
     onEvent(event) {
       const p = event?.properties ?? {};
@@ -198,9 +240,13 @@ export function startBridge({ port = Number(process.env.DOTPALS_PORT || process.
       }
     },
     // OpenCode stopped: its requests went with it, so their cards close (answering one would fail).
+    // Cards from a terminal belong to that OpenCode, not this one: they stay.
     onExit() {
-      for (const item of ocAsks.values()) send('ocask', { id: item.id, session: item.session, status: 'answered' });
-      ocAsks.clear();
+      for (const item of [...ocAsks.values()]) {
+        if (item.via === 'plugin') continue;
+        ocAsks.delete(item.id);
+        send('ocask', { id: item.id, session: item.session, status: 'answered' });
+      }
     },
   });
   const CHAT_OFF = 'Chat is off. Turn it on in Dashboard → Settings → Chat with your agents.';
@@ -662,6 +708,12 @@ export function startBridge({ port = Number(process.env.DOTPALS_PORT || process.
   }
 
   function handleEvent(event, agent) {
+    // OpenCode's permission requests and questions from a terminal: cards, not activity.
+    // Shown whenever the OpenCode integration is on, chat or not (they don't come from chat).
+    if (agent === 'opencode' && (event.type === 'ask' || event.type === 'ask.done')) {
+      if (enabled('opencode')) pluginAsk(event);
+      return null;
+    }
     if (agent) return agentEvent(agent, event);
     if (typeof event.hook_event_name === 'string' && event.session_id) return enabled('claude') ? claudeEvent(event) : null;
     return enabled('generic') ? genericEvent(event) : null;
@@ -918,13 +970,16 @@ export function startBridge({ port = Number(process.env.DOTPALS_PORT || process.
       try {
         if (item.kind === 'permission') {
           if (!['once', 'always', 'reject'].includes(body.reply)) return json(res, 400, { error: 'reply must be once, always or reject' });
-          await chat.replyPermission({ id: item.id, reply: body.reply, directory });
+          // From a terminal session: the plugin collects it and answers OpenCode itself.
+          if (item.via === 'plugin') ocAnswers.set(item.id, { kind: 'permission', reply: body.reply, at: Date.now() });
+          else await chat.replyPermission({ id: item.id, reply: body.reply, directory });
         } else {
           const answers = body.answers === null ? null
             : Array.isArray(body.answers) && body.answers.length === item.questions.length && body.answers.every((a) => Array.isArray(a) && a.length <= 8 && a.every((s) => typeof s === 'string' && s.length <= 2000))
               ? body.answers : undefined;
           if (answers === undefined) return json(res, 400, { error: 'answers must be one list of choices per question' });
-          await chat.replyQuestion({ id: item.id, answers, directory });
+          if (item.via === 'plugin') ocAnswers.set(item.id, { kind: 'question', answers, at: Date.now() });
+          else await chat.replyQuestion({ id: item.id, answers, directory });
         }
         ocAsks.delete(item.id);
         send('ocask', { id: item.id, session: item.session, status: 'answered' });
@@ -932,6 +987,21 @@ export function startBridge({ port = Number(process.env.DOTPALS_PORT || process.
       } catch (err) {
         return json(res, 502, { error: err.message });
       }
+    }
+    // The OpenCode plugin collects the answers given in the pal for its requests.
+    // { ids: [id…] } → { answers: { id: { kind, reply | answers } } }; each is handed out once.
+    if (path === '/api/oc-answers') {
+      if (req.headers.origin) return json(res, 403, { error: 'forbidden' }); // only the plugin, never a page
+      let body;
+      try { body = JSON.parse(await readBody(req)); } catch { return json(res, 400, { error: 'bad json' }); }
+      const answers = {};
+      for (const id of (Array.isArray(body?.ids) ? body.ids : []).slice(0, 50)) {
+        const a = typeof id === 'string' ? ocAnswers.get(id) : null;
+        if (!a) continue;
+        ocAnswers.delete(id);
+        answers[id] = a.kind === 'permission' ? { kind: a.kind, reply: a.reply } : { kind: a.kind, answers: a.answers };
+      }
+      return json(res, 200, { answers });
     }
     if (path === '/api/chat' || path === '/api/chat/abort') {
       const origin = req.headers.origin;
@@ -1091,7 +1161,7 @@ export function startBridge({ port = Number(process.env.DOTPALS_PORT || process.
   // 4 s), so a client never reuses one this end is just closing ("fetch failed").
   server.keepAliveTimeout = 65_000;
   server.headersTimeout = 66_000;
-  server.on('close', () => { clearTimeout(warmTimer); chat.stop(); stopWatchers(); clearInterval(reaper); clearTimeout(firstBeat); clearInterval(beat); laya.stop().catch(() => {}); });
+  server.on('close', () => { clearTimeout(warmTimer); chat.stop(); stopWatchers(); clearInterval(reaper); clearInterval(ocReaper); clearTimeout(firstBeat); clearInterval(beat); laya.stop().catch(() => {}); });
 
   return new Promise((ok, fail) => {
     server.once('error', (err) => { stopWatchers(); clearInterval(reaper); fail(err); });
