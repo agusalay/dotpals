@@ -21,6 +21,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Answer from the keyboard.** While a permission card is waiting, Ctrl+Alt+Y allows and Ctrl+Alt+N denies the top one (⌘⌥ on macOS). The keys are only held while a card is waiting; the notch gets them first when it shows a card.
 - **Answer OpenCode in a terminal from the pal.** Permission requests and questions from OpenCode running in a terminal now show as the same cards as chat sessions, also with chat off. The plugin collects the answer (`POST /api/oc-answers`) and replies to OpenCode itself.
 - **Feed the pal.** After 3 minutes of idling, a little cookie appears beside the pal. Click it to feed the pal: it does an excited hop, a quick "chomp", gets a happy face for a moment, and a few hearts pop. One treat per idle spell. `feed()`, `showFood()`, `hideFood()`, `::part(food)`.
+- **Pal habits** (Dashboard → Settings → *Pal habits*, each one can be turned off):
+  - **Seasonal costumes:** a witch hat in October and a Santa hat in December. Five requests done in a row without an error earn a crown for the rest of the day.
+  - **Time of day:** the pal is sleepy late at night (slower hops, the odd yawn) and lively in the morning.
+  - **Tests green at last:** when a session's tests go from failing to passing, its pal celebrates with confetti.
+  - **Hungry:** not fed for 4 hours, the pal looks tired and its tummy rumbles; the cookie shows right away.
+  - **Same file:** when two agents change the same file, both pals look worried and glance at each other.
+  - **Careful:** a risky command (the ones the story already flags, like `rm -rf` or `git push --force`) makes its pal jump with a red "!".
+  - **Still waiting:** a card nobody answered gets a reminder after 2 and 5 minutes.
+  - **Codex quota:** the pal says when a Codex limit has 10% or less left.
+  - **Right-click the pal:** copy the summary, continue in another agent, today's recap, feed, focus mode, read results aloud, open the dashboard.
+  - **Day recap:** after 5 pm the pal sums up the day once.
+  - **Focus mode:** no sounds, hops or chatter; cards, risky-command warnings, reminders and the quota warning still show. Also in the tray.
+  - **Read results aloud** (off by default): one sentence when an agent finishes while you're away, with voices installed on your computer only.
+- **New `<dot-pal>` API** (all opt-in, documented in the README and `src/index.d.ts`): attributes `wear` (`witch-hat`, `santa-hat`, `crown`, `sunglasses`, `party-hat`), `energy` (`sleepy`, `normal`, `hyper`) and `hungry`; methods `yawn()`, `celebrate()`, `worry(ms)` and `alarm()`; `say(text, { priority: true })` keeps a line up for its whole duration, so status text can't cut it short; `feed()` fires `dotpal-fed`.
 
 ### Fixed
 

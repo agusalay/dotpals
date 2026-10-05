@@ -32,6 +32,13 @@ export const DEFAULTS = {
   greetOnStart: false,  // with chat on: the desktop pal starts small and asks what you're working on today
   palSize: 100,         // the pal's size in small mode, in percent (50–150)
   name: '',             // your name, for the morning greeting ("Good morning, Ade!"); '' = not set
+  // The pal's habits (Settings → Pal habits).
+  seasonal: true,       // dress up for the season: a witch hat in October, a Santa hat in December
+  focus: false,         // focus mode: no sounds, hops or chatter; cards and alarms still show
+  speak: false,         // read results aloud, with voices on this computer only
+  dayRecap: true,       // a short recap of the day after 5 pm
+  dangerAlarm: true,    // warn about risky commands (rm -rf, force-push, sudo, …)
+  quotaWarn: true,      // warn when 10% or less of the Codex quota is left
   // Two agents, one file (bridge/guard.js): when an agent is about to change a file another
   // active session changed in the last `conflictMinutes`, 'ask' (Claude Code asks you first),
   // 'tell' (Claude is told to re-read the file) or 'off'. Other agents only get an alert.
@@ -54,7 +61,7 @@ const CHARACTERS = ['blu', 'hop', 'sunny', 'lovi', 'muse', 'grok', 'nova', 'byte
 /** Keep only known settings with sensible values. */
 function clean(input = {}) {
   const out = {};
-  for (const key of ['sounds', 'notifications', 'history', 'codex', 'approvals', 'shareRecap', 'chat', 'greetOnStart']) if (typeof input[key] === 'boolean') out[key] = input[key];
+  for (const key of ['sounds', 'notifications', 'history', 'codex', 'approvals', 'shareRecap', 'chat', 'greetOnStart', 'seasonal', 'focus', 'speak', 'dayRecap', 'dangerAlarm', 'quotaWarn']) if (typeof input[key] === 'boolean') out[key] = input[key];
   const wait = Number(input.approvalWait);
   if (Number.isInteger(wait) && wait >= 10 && wait <= 120) out.approvalWait = wait;
   const size = Number(input.palSize);

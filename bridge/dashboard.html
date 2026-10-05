@@ -490,6 +490,16 @@
           </div>
 
           <div class="card">
+            <h2>Pal habits</h2>
+            <div class="row"><div class="text">Seasonal costume<small>A witch hat in October, a Santa hat in December.</small></div><input type="checkbox" class="switch" id="s-seasonal" aria-label="Seasonal costume"></div>
+            <div class="row"><div class="text">Focus mode<small>No sounds, hops or chatter. Permission cards and warnings still show.</small></div><input type="checkbox" class="switch" id="s-focus" aria-label="Focus mode"></div>
+            <div class="row"><div class="text">Read results aloud<small>When an agent finishes and you're not looking. Only voices on this computer.</small></div><input type="checkbox" class="switch" id="s-speak" aria-label="Read results aloud"></div>
+            <div class="row"><div class="text">Day recap<small>After 5 pm, the pal sums up your day.</small></div><input type="checkbox" class="switch" id="s-day-recap" aria-label="Day recap"></div>
+            <div class="row"><div class="text">Risky command alarm<small>The pal warns about rm -rf, force-push, sudo and the like.</small></div><input type="checkbox" class="switch" id="s-danger" aria-label="Risky command alarm"></div>
+            <div class="row"><div class="text">Codex quota warning<small>The pal tells you when 10% or less is left.</small></div><input type="checkbox" class="switch" id="s-quota" aria-label="Codex quota warning"></div>
+          </div>
+
+          <div class="card">
             <h2>Make your own pal</h2>
             <p class="muted" style="margin:4px 0 0">Pick a body, eyes and something on top. It shows up in the floating pal and here.</p>
             <div class="maker">
@@ -1580,6 +1590,8 @@
     preview.setAttribute('idle', 'float');
     $('preview').append(preview);
 
+    // Settings → Pal habits: switch id → config key.
+    const HABITS = [['s-seasonal', 'seasonal'], ['s-focus', 'focus'], ['s-speak', 'speak'], ['s-day-recap', 'dayRecap'], ['s-danger', 'dangerAlarm'], ['s-quota', 'quotaWarn']];
     async function save(patch) {
       try {
         config = await api('/api/config', patch);
@@ -1661,6 +1673,7 @@
     $('s-sounds').onchange = (e) => save({ sounds: e.target.checked });
     $('s-pal-size').onchange = (e) => save({ palSize: Number(e.target.value) });
     $('s-name').onchange = (e) => save({ name: e.target.value });
+    for (const [id, key] of HABITS) $(id).onchange = (e) => save({ [key]: e.target.checked });
     $('s-chat').onchange = (e) => save({ chat: e.target.checked });
     $('s-notifications').onchange = (e) => save({ notifications: e.target.checked });
     $('s-approvals').onchange = (e) => save({ approvals: e.target.checked });
@@ -1943,6 +1956,7 @@
       $('s-sounds').checked = config.sounds;
       $('s-pal-size').value = String(config.palSize ?? 100);
       $('s-name').value = config.name ?? '';
+      for (const [id, key] of HABITS) $(id).checked = !!config[key];
       $('s-chat').checked = !!config.chat;
       $('s-notifications').checked = config.notifications;
       $('s-approvals').checked = !!config.approvals;

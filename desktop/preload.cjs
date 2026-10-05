@@ -93,6 +93,13 @@ contextBridge.exposeInMainWorld('dotpalsDesktop', {
     ipcRenderer.removeAllListeners('notch:idle');
     ipcRenderer.on('notch:idle', (_, seconds) => callback(seconds));
   },
+  /** Right-click on a pal: show a native menu of [{ id, label, type?, checked?, enabled?, submenu? }]. */
+  palMenu: (items) => ipcRenderer.send('window:pal-menu', items),
+  /** onPalMenu(id): an item of that menu was clicked. */
+  onPalMenu(callback) {
+    ipcRenderer.removeAllListeners('window:pal-menu-click');
+    ipcRenderer.on('window:pal-menu-click', (_, id) => callback(id));
+  },
   /** onPalIdle(seconds): the same, for the pal window (every 2 s). */
   onPalIdle(callback) {
     ipcRenderer.removeAllListeners('window:idle');

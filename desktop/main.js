@@ -177,6 +177,21 @@ if (!app.requestSingleInstanceLock()) {
   }
   ipcMain.on('dashboard:open', openDashboard);
 
+  // Right-click on a pal: the page sends the items ({ id, label, type?, checked?, enabled?,
+  // submenu? }), we show a native menu and send back the id of the one that was clicked.
+  ipcMain.on('window:pal-menu', (event, items) => {
+    if (!win || win.isDestroyed() || event.sender !== win.webContents || !Array.isArray(items)) return;
+    const build = (list, depth = 0) => list.slice(0, 30).map((it) => {
+      if (it?.type === 'separator') return { type: 'separator' };
+      const out = { label: String(it?.label ?? '').slice(0, 80), enabled: it?.enabled !== false };
+      if (it?.type === 'checkbox') Object.assign(out, { type: 'checkbox', checked: !!it.checked });
+      if (Array.isArray(it?.submenu) && depth < 2) out.submenu = build(it.submenu, depth + 1);
+      else if (typeof it?.id === 'string') out.click = () => { if (win && !win.isDestroyed()) win.webContents.send('window:pal-menu-click', it.id); };
+      return out;
+    });
+    try { Menu.buildFromTemplate(build(items)).popup({ window: win }); } catch (err) { console.warn('[dotpals] the pal menu failed:', err.message); }
+  });
+
   function createTray() {
     tray = new Tray(icon.resize({ width: 16, height: 16 }));
     tray.setToolTip(`dotpals: ${process.platform === 'darwin' ? 'Cmd+Option+P' : 'Ctrl+Alt+P'} to show or hide`);
@@ -198,6 +213,8 @@ if (!app.requestSingleInstanceLock()) {
       ...(loadConfig().chat ? [{ label: 'Start working…', click: sayHello }] : []),
       { type: 'separator' },
       { label: 'Notifications', type: 'checkbox', checked: loadConfig().notifications, click: (item) => saveConfig({ notifications: item.checked }) },
+      // Through the bridge, so every page (pal, notch, dashboard) hears it at once.
+      { label: 'Focus mode', type: 'checkbox', checked: !!loadConfig().focus, click: (item) => setConfig({ focus: item.checked }) },
       ...(loadConfig().chat ? [{ label: 'Greet me when dotpals starts', type: 'checkbox', checked: !!loadConfig().greetOnStart, click: (item) => saveConfig({ greetOnStart: item.checked }) }] : []),
       { label: 'Open when I log in', type: 'checkbox', checked: app.getLoginItemSettings(loginItem()).openAtLogin, click: (item) => app.setLoginItemSettings({ ...loginItem(), openAtLogin: item.checked }) },
       { type: 'separator' },

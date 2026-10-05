@@ -9,7 +9,7 @@ process.env.DOTPALS_HOME = home;
 delete process.env.DOTPALS_CODEX;
 after(() => rm(home, { recursive: true, force: true }));
 
-const { AGENT_IDS, loadConfig, saveConfig } = await import('../bridge/config.js');
+const { AGENT_IDS, DEFAULTS, loadConfig, saveConfig } = await import('../bridge/config.js');
 const { ADAPTERS } = await import('../bridge/adapters/index.js');
 
 test('every integration can be switched off in the config', () => {
@@ -53,6 +53,30 @@ test('name: a trimmed string of at most 30 chars; empty means not set', () => {
   for (const name of [42, null, ['Ade'], { a: 1 }]) assert.equal(saveConfig({ name }).name, 'a'.repeat(30), `${JSON.stringify(name)} is ignored`);
   assert.equal(saveConfig({ name: '' }).name, '', 'an empty field clears the name');
   assert.equal(saveConfig({ name: '   ' }).name, '', 'whitespace only is not a name');
+});
+
+test('pal habits: on by default except focus mode and reading aloud', () => {
+  const c = loadConfig();
+  assert.deepEqual(
+    { seasonal: c.seasonal, focus: c.focus, speak: c.speak, dayRecap: c.dayRecap, dangerAlarm: c.dangerAlarm, quotaWarn: c.quotaWarn },
+    { seasonal: true, focus: false, speak: false, dayRecap: true, dangerAlarm: true, quotaWarn: true },
+  );
+});
+
+test('pal habits: only true or false is kept, and a save keeps the others', async () => {
+  const habits = ['seasonal', 'focus', 'speak', 'dayRecap', 'dangerAlarm', 'quotaWarn'];
+  const flipped = saveConfig(Object.fromEntries(habits.map((k) => [k, !loadConfig()[k]])));
+  for (const k of habits) assert.equal(flipped[k], !DEFAULTS[k], `${k} flips`);
+  for (const bad of ['yes', 1, 0, null, {}, ['true']]) {
+    const after = saveConfig(Object.fromEntries(habits.map((k) => [k, bad])));
+    for (const k of habits) assert.equal(after[k], !DEFAULTS[k], `${k}: ${JSON.stringify(bad)} is ignored`);
+  }
+  // Saved as booleans, and read back the same.
+  const saved = JSON.parse(await readFile(join(home, 'config.json'), 'utf8'));
+  for (const k of habits) assert.equal(saved[k], !DEFAULTS[k]);
+  assert.equal(saveConfig({ focus: true }).seasonal, !DEFAULTS.seasonal, 'one switch leaves the others alone');
+  saveConfig(Object.fromEntries(habits.map((k) => [k, DEFAULTS[k]])));
+  for (const k of habits) assert.equal(loadConfig()[k], DEFAULTS[k], `${k} back to its default`);
 });
 
 test('agents.codex is the same switch as codex', () => {

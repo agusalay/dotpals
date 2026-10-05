@@ -536,7 +536,7 @@
 
   <script type="module">
     import { DotPal, registerCustom } from '../src/index.js';
-    import { story as storyOf, headline, planOf, toolkit, overlaps, compactNote, retries, testLine, checkOf, simple, minorChapter, turnMarkdown, recapMarkdown, readiness, readinessLine, gitTruth, gitLine, whyStopped } from '../bridge/ui/story.js';
+    import { story as storyOf, headline, planOf, toolkit, overlaps, compactNote, retries, testLine, checkOf, simple, minorChapter, turnMarkdown, recapMarkdown, readiness, readinessLine, gitTruth, gitLine, whyStopped, flags as riskFlags } from '../bridge/ui/story.js';
     import { buildTurns as turnsOf, baseName, facts, fileUrl, harnessClass, harnessName, plain, plural, secs, sentence, shortTime, startOfDay, turnTime } from '../bridge/ui/recap.js';
     import { continueMenu } from '../bridge/ui/handoff-menu.js';
 
@@ -572,6 +572,8 @@
     // Small synthesized chimes (Web Audio, no files): a blip when you send a
     // prompt, a tick when a file is saved, a double ping when the agent needs your
     // OK, a rising chime when it's done and a low bonk on errors.
+    // The pal's habits (Dashboard → Settings → Pal habits), kept in step by applyConfig → setPalPrefs.
+    const palPrefs = { seasonal: true, focus: false, speak: false, dayRecap: true, dangerAlarm: true, quotaWarn: true };
     const sound = (() => {
       let ctx;
       let on = true;
@@ -611,7 +613,7 @@
           try { localStorage.setItem('dotpals.sound', on ? 'on' : 'off'); } catch {}
         },
         play(cue) {
-          if (!on) return;
+          if (!on || palPrefs.focus) return; // focus mode: silent
           try { cues[cue]?.(); } catch {}
         },
       };
@@ -641,6 +643,7 @@
       lastState.set(update.session, update.state);
       if (before === update.state || !fresh(update.at)) return;
       notifyState(update);
+      speakResult(update);
       if (update.state === 'done') sound.play('done');
       else if (update.state === 'waiting') sound.play('waiting');
       else if (update.state === 'error') sound.play('error');
@@ -813,9 +816,10 @@
     // says so, and a desktop notification tells you (once per file and pair, per 10 min).
     function applyConflict(c) {
       if (!c?.text || !fresh(c.at)) return;
-      slots.get(c.session)?.pal.say?.(c.text, { duration: 6000 });
+      slots.get(c.session)?.pal.say?.(c.text, { duration: 6000, priority: true });
       sound.play('waiting');
       desktop?.notify?.('Two agents, one file', `${c.text}. Check they don’t undo each other’s work.`);
+      conflictWorry(c);
     }
 
     function pick(session, byUser) {
@@ -1112,6 +1116,7 @@
       pal.setAttribute('idle', 'float'); // drift gently when there's nothing going on
       pal.setAttribute('playful', ''); // little idle hops, and it likes being petted
       pal.setAttribute('hands', ''); // little hands: waves and high fives
+      applyLook(pal); // costume, energy, hunger; no hops in focus mode
       const label = el('span');
       box.append(pal, label);
       stage.append(box);
@@ -1120,7 +1125,7 @@
       box.hidden = !slotShown(update.session);
       resizePals();
       renderSessions();
-      pal.greet(); // pops up from below the ledge and says hi
+      if (!palPrefs.focus) pal.greet(); // pops up from below the ledge and says hi
       return slot;
     }
 
@@ -1282,7 +1287,7 @@
         return;
       }
       if (!treatSince.has(pal)) treatSince.set(pal, Date.now());
-      if (Date.now() - treatSince.get(pal) >= TREAT_AFTER) pal.showFood?.();
+      if (Date.now() - treatSince.get(pal) >= (isHungry() ? 0 : TREAT_AFTER)) pal.showFood?.(); // hungry: right away
     }
     function anyActive() {
       for (const s of sessions.values()) if (ACTIVE.includes(s.state)) return true;
@@ -1314,7 +1319,7 @@
         const list = shownPals();
         const pairs = [];
         for (let i = 0; i + 1 < list.length; i++) if (calmPal(list[i]) && calmPal(list[i + 1])) pairs.push([list[i], list[i + 1]]);
-        if (pairs.length) {
+        if (pairs.length && !palPrefs.focus) {
           const [l, r] = pairs[Math.floor(Math.random() * pairs.length)];
           l.pal.glance?.('right', 1600);
           r.pal.glance?.('left', 1600);
@@ -1324,7 +1329,7 @@
     })();
     // A session just finished: its pal and the nearest visible one high-five.
     function highFiveDone(slot) {
-      if (slot.el.hidden) return;
+      if (slot.el.hidden || palPrefs.focus) return;
       const other = nearestTo(slot.pal);
       if (!other) return;
       const right = centerX(other) > centerX(slot.pal);
@@ -1334,7 +1339,7 @@
     // Petting one pal: a neighbour looks over.
     stage.addEventListener('dotpal-pet', (e) => {
       const pal = e.composedPath().find((n) => n.localName === 'dot-pal');
-      if (!pal) return;
+      if (!pal || palPrefs.focus) return;
       const other = nearestTo(pal);
       if (other) other.glance?.(centerX(pal) > centerX(other) ? 'right' : 'left', 1800);
     });
@@ -1367,14 +1372,306 @@
     desktop?.onPalIdle?.((idle) => {
       if (idle >= AWAY_AFTER) { if (!awaySince) awaySince = Date.now() - idle * 1000; return; }
       if (!awaySince || idle >= 3) return;
+      if (palPrefs.focus) { awaySince = 0; return; } // focus mode: no summary
       const text = awaySummary(awaySince);
       awaySince = 0; // one summary per away spell
       const shown = shownPals().map((p) => p.pal);
       const pals = shown.length ? shown : $('empty').hidden ? [] : [$('empty-pal')];
       for (const pal of pals) pal.startle?.();
       const first = pals[0];
-      if (first) setTimeout(() => { first.wave?.(); first.say?.(text, { duration: 9000 }); }, 700);
+      if (first) setTimeout(() => { first.wave?.(); first.say?.(text, { duration: 9000, priority: true }); }, 700);
     });
+
+    // -- the pal's habits ---------------------------------------------------------------
+    // Costumes, energy by the time of day, hunger, a streak crown, tests turning green,
+    // worry on conflicts, a danger alarm, reminders, quota warnings, a day recap, a
+    // right-click menu, focus mode and reading results aloud. Every component call is
+    // optional (an older pal simply skips it) and never throws here.
+    const bootAt = Date.now();
+    const act = (pal, method, ...args) => {
+      // A reaction's line stays up; status text waits until it's done (see say() in src/element.js).
+      if (method === 'say') args[1] = { priority: true, ...args[1] };
+      try { const r = pal?.[method]?.(...args); r?.catch?.(() => {}); } catch {}
+    };
+    const store = {
+      get(key, fallback = null) { try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch { return fallback; } },
+      set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} },
+    };
+    const allPals = () => [...[...slots.values()].map((s) => s.pal), $('empty-pal')].filter(Boolean);
+    // The pal on show to talk through: the session's own, else the first visible one, else the waiting pal.
+    const palFor = (session) => {
+      const own = session && slots.get(session);
+      if (own && !own.el.hidden) return own.pal;
+      return shownPals()[0]?.pal ?? ($('empty').hidden ? null : $('empty-pal'));
+    };
+    const setAttr = (pal, name, value) => {
+      if (value == null || value === false || value === '') { if (pal.hasAttribute(name)) pal.removeAttribute(name); }
+      else if (pal.getAttribute(name) !== String(value === true ? '' : value)) pal.setAttribute(name, value === true ? '' : value);
+    };
+
+    function setPalPrefs(config) {
+      const wasFocus = palPrefs.focus;
+      for (const key of Object.keys(palPrefs)) if (typeof config?.[key] === 'boolean') palPrefs[key] = config[key];
+      if ((palPrefs.focus && !wasFocus) || !palPrefs.speak) { try { speechSynthesis.cancel(); } catch {} }
+      applyLooks(); // focus turns the hops off, seasonal the costume
+    }
+
+    // Streak: 5 finished requests in a row today with no error in between → a crown for the day.
+    const todayKey = () => startOfDay();
+    function streak() {
+      const s = store.get('dotpals.streak');
+      return s && s.date === todayKey() ? s : { date: todayKey(), count: 0, crown: false };
+    }
+    function bumpStreak(entry) {
+      const s = streak();
+      if (entry.kind === 'error') s.count = 0;
+      else s.count++;
+      const crowned = !s.crown && s.count >= 5;
+      if (crowned) s.crown = true;
+      store.set('dotpals.streak', s);
+      if (!crowned) return;
+      applyLooks();
+      if (!palPrefs.focus) act(palFor(entry.session), 'say', 'Five in a row! 👑', { duration: 5000 });
+    }
+
+    // Hunger: not fed for 4 hours. The first visit counts as fed.
+    const HUNGRY_AFTER = 4 * 3600_000;
+    if (!Number.isFinite(store.get('dotpals.lastFed'))) store.set('dotpals.lastFed', Date.now());
+    const isHungry = () => Date.now() - (Number(store.get('dotpals.lastFed')) || Date.now()) >= HUNGRY_AFTER;
+    const markFed = () => { store.set('dotpals.lastFed', Date.now()); applyLooks(); };
+    // Capture: heard even if the event doesn't bubble. A click on the treat counts too
+    // (for a pal that doesn't send dotpal-fed).
+    document.addEventListener('dotpal-fed', markFed, true);
+    stage.addEventListener('click', (e) => { if (e.composedPath().some((n) => n.classList?.contains('dp-food'))) markFed(); }, true);
+
+    // Costume (the crown beats the season), energy by the hour, hunger, and hops unless focused.
+    function costume() {
+      if (streak().crown) return 'crown';
+      if (!palPrefs.seasonal) return '';
+      const month = new Date().getMonth();
+      return month === 9 ? 'witch-hat' : month === 11 ? 'santa-hat' : '';
+    }
+    function energy() {
+      const h = new Date().getHours();
+      return h >= 22 || h < 6 ? 'sleepy' : h >= 7 && h < 11 ? 'hyper' : 'normal';
+    }
+    function applyLook(pal) {
+      if (!pal) return;
+      setAttr(pal, 'wear', costume());
+      setAttr(pal, 'energy', energy());
+      setAttr(pal, 'hungry', isHungry());
+      setAttr(pal, 'playful', !palPrefs.focus);
+    }
+    function applyLooks() { for (const pal of allPals()) applyLook(pal); }
+    setInterval(applyLooks, 60_000); // energy each minute; the costume and hunger ride along
+
+    // Tests finally pass: a session's tests were failing and now they're green.
+    const redTests = new Set();
+    const testLevel = (session) => { try { return testLine(stepsOf(session))?.level; } catch { return null; } };
+    function seedRedTests() { for (const id of sessions.keys()) if (testLevel(id) === 'bad') redTests.add(id); }
+    function checkTests(session, live) {
+      const level = testLevel(session);
+      if (level === 'bad') { redTests.add(session); return; }
+      if (level !== 'ok' || !redTests.has(session)) return;
+      redTests.delete(session);
+      if (palPrefs.focus || !live || Date.now() - bootAt < 8000) return; // not for history replayed on connect
+      // Only the session's own pal on show celebrates: another agent's pal (or the
+      // waiting pal) never cheers for tests that aren't its own.
+      const own = slots.get(session);
+      if (!own || own.el.hidden) return;
+      act(own.pal, 'celebrate');
+      act(own.pal, 'say', 'Tests are green at last!', { duration: 4000 });
+    }
+
+    // Danger alarm: a new command the story flags as risky (bridge/ui/story.js), at most every 30 s per session.
+    const alarmAt = new Map();
+    function dangerCheck(entry) {
+      if (!palPrefs.dangerAlarm) return;
+      let risky = [];
+      try { risky = riskFlags([entry]).filter((f) => f.level === 'warn'); } catch {}
+      if (!risky.length || Date.now() - (alarmAt.get(entry.session) ?? 0) < 30_000) return;
+      alarmAt.set(entry.session, Date.now());
+      const cmd = clipLine(entry.body?.command ?? entry.detail ?? entry.title ?? '', 40);
+      const pal = palFor(entry.session);
+      act(pal, 'alarm');
+      act(pal, 'say', `Careful: ${cmd}!`, { duration: 6000 });
+      sound.play('error'); // silent in focus mode
+    }
+
+    function onPalActivity(entry, isNew) {
+      if (entry.kind === 'run') checkTests(entry.session, Date.now() - (entry.at ?? 0) < 10 * 60_000); // a test run can take a while
+      // New and recent: a busy bridge can deliver events a few seconds late, so not the
+      // 4 s `fresh` window; history replayed on connect is older, or arrives during boot.
+      if (!isNew || Date.now() - (entry.at ?? 0) > 60_000 || Date.now() - bootAt < 8000) return;
+      if (entry.kind === 'done' || entry.kind === 'error') bumpStreak(entry);
+      if (entry.kind === 'run') dangerCheck(entry);
+    }
+
+    // Two agents, one file (the bridge's 'conflict' event): both pals worry and look at each other.
+    function conflictWorry(c) {
+      const a = slots.get(c.session);
+      const b = slots.get(c.other?.session);
+      if (!a || !b || a === b || a.el.hidden || b.el.hidden) return;
+      act(a.pal, 'worry', 4000);
+      act(b.pal, 'worry', 4000);
+      if (!palPrefs.focus) {
+        const right = centerX(b.pal) > centerX(a.pal);
+        act(a.pal, 'glance', right ? 'right' : 'left', 2000);
+        act(b.pal, 'glance', right ? 'left' : 'right', 2000);
+      }
+      act(b.pal, 'say', 'Same file!', { duration: 4000 }); // a.pal is already saying the bridge's text
+    }
+
+    // Re-remind: a card still unanswered after 2 minutes, and again after 5, then quiet.
+    const reminded = new Map(); // card id → { at, n }
+    setInterval(() => {
+      const pending = [...asks.values(), ...ocAsks.values()];
+      const ids = new Set(pending.map((a) => a.id));
+      for (const id of reminded.keys()) if (!ids.has(id)) reminded.delete(id);
+      for (const a of pending) {
+        const r = reminded.get(a.id) ?? { at: Date.now(), n: 0 };
+        reminded.set(a.id, r);
+        const waited = Date.now() - r.at;
+        if (!((r.n === 0 && waited >= 2 * 60_000) || (r.n === 1 && waited >= 5 * 60_000))) continue;
+        r.n++;
+        const pal = palFor(a.session);
+        act(pal, 'wave');
+        act(pal, 'say', 'Still waiting for your answer…', { duration: 5000 });
+        sound.play('waiting'); // silent in focus mode
+      }
+    }, 15_000);
+
+    // Codex quota: every 5 minutes, warn once per limit window when 10% or less is left.
+    async function checkQuota() {
+      if (!palPrefs.quotaWarn || !desktop?.usage) return;
+      let usage;
+      try { usage = await desktop.usage(); } catch { return; }
+      const warned = new Set(store.get('dotpals.quotaWarned', []));
+      for (const a of usage?.agents ?? []) {
+        if (a?.harness !== 'codex') continue;
+        for (const l of a.limits ?? []) {
+          if (!Number.isFinite(l?.used_percent) || l.used_percent < 90) continue;
+          const key = `${l.label}|${l.resets_at ?? ''}`;
+          if (warned.has(key)) continue;
+          warned.add(key);
+          act(palFor(null), 'say', `Only ${Math.max(0, Math.round(100 - l.used_percent))}% of the Codex quota left`, { duration: 6000 });
+        }
+      }
+      store.set('dotpals.quotaWarned', [...warned].slice(-20));
+    }
+    setInterval(checkQuota, 5 * 60_000);
+    setTimeout(checkQuota, 30_000);
+
+    // Day recap: "Today: 12 requests, 3 projects, tests all green."
+    function dayRecapText() {
+      const since = startOfDay();
+      const today = [...entries.values()].map((i) => i.entry).filter((e) => e.at >= since);
+      if (!today.length) return null;
+      const requests = today.filter((e) => e.kind === 'prompt').length;
+      const projects = new Set(today.map((e) => e.label ?? sessions.get(e.session)?.label).filter(Boolean)).size;
+      let red = 0, green = 0;
+      for (const id of new Set(today.map((e) => e.session))) {
+        const level = testLevel(id);
+        if (level === 'bad') red++; else if (level === 'ok') green++;
+      }
+      const parts = [
+        requests && plural(requests, 'request'),
+        projects && plural(projects, 'project'),
+        red ? `tests still failing in ${plural(red, 'session')}` : green ? 'tests all green' : '',
+      ].filter(Boolean);
+      return parts.length ? `Today: ${parts.join(', ')}.` : null;
+    }
+    function sayDayRecap() {
+      act(palFor(null), 'say', dayRecapText() ?? 'Nothing happened today yet.', { duration: 8000 });
+    }
+    setInterval(() => {
+      if (!palPrefs.dayRecap || palPrefs.focus || new Date().getHours() < 17 || store.get('dotpals.dayRecap') === todayKey()) return;
+      if (!dayRecapText()) return;
+      store.set('dotpals.dayRecap', todayKey());
+      sayDayRecap();
+    }, 60_000);
+
+    // Read aloud: only voices on this computer (never a network voice), in your language if there is one.
+    function localVoice() {
+      try {
+        const voices = speechSynthesis.getVoices().filter((v) => v.localService === true);
+        const want = String(navigator.language || '').toLowerCase();
+        const base = want.split('-')[0];
+        return voices.find((v) => v.lang?.toLowerCase() === want)
+          ?? voices.find((v) => v.lang?.toLowerCase().split(/[-_]/)[0] === base)
+          ?? voices[0] ?? null;
+      } catch { return null; }
+    }
+    try { speechSynthesis.getVoices(); } catch {} // starts loading the list
+    function speakResult(update) {
+      if (!palPrefs.speak || palPrefs.focus || !['done', 'error'].includes(update.state)) return;
+      if (document.hasFocus() && !awaySince) return;
+      const voice = localVoice();
+      if (!voice) return;
+      const name = sessions.get(update.session)?.label ?? 'Your agent';
+      try {
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(update.state === 'done' ? `${name} is done.` : `${name} hit an error.`);
+        u.voice = voice;
+        u.lang = voice.lang;
+        speechSynthesis.speak(u);
+      } catch {}
+    }
+
+    // Right-click a pal: a small native menu (desktop/main.js builds it).
+    let menuActions = new Map();
+    let handoffAgents = null; // { at, list } from GET /api/handoff/agents
+    async function handoffList() {
+      if (!sameOrigin) return [];
+      if (handoffAgents && Date.now() - handoffAgents.at < 60_000) return handoffAgents.list;
+      try {
+        const list = (await (await fetch('/api/handoff/agents')).json()).agents ?? [];
+        handoffAgents = { at: Date.now(), list };
+        return list;
+      } catch { return []; }
+    }
+    async function handOff(session, agent, pal) {
+      try {
+        const res = await fetch('/api/handoff', { method: 'POST', headers: { 'content-type': 'application/json', 'x-dotpals': '1' }, body: JSON.stringify({ session, agent }) });
+        const r = await res.json().catch(() => ({}));
+        if (agent === 'copy') {
+          if (!res.ok || !r.note) throw new Error(r.error || "Couldn't copy the note");
+          desktop?.copy?.(r.note);
+          act(pal, 'say', 'Hand-off note copied.', { duration: 3000 });
+        } else if (res.ok) act(pal, 'say', `Continuing in ${r.name ?? agent}!`, { duration: 3500 });
+        else throw new Error(r.error || "Couldn't open the agent");
+      } catch (err) { act(pal, 'say', err.message, { duration: 5000 }); }
+    }
+    stage.addEventListener('contextmenu', async (e) => {
+      const pal = e.composedPath().find((n) => n.localName === 'dot-pal');
+      if (!pal || !desktop?.palMenu) return;
+      e.preventDefault();
+      const session = [...slots].find(([, s]) => s.pal === pal)?.[0] ?? null;
+      const turn = session ? turnsOf(stepsOf(session)).at(-1) : null;
+      const agents = session ? await handoffList() : [];
+      const fed = !!pal.shadowRoot?.querySelector('.dp-food:not([hidden])');
+      menuActions = new Map();
+      let n = 0;
+      const item = (label, fn, extra = {}) => { const id = `m${n++}`; menuActions.set(id, fn); return { id, label, ...extra }; };
+      const items = [
+        item('Copy summary', () => {
+          try { desktop.copy(turnMarkdown(turn, { live: !turn.end })); act(pal, 'say', 'Summary copied.', { duration: 2500 }); } catch {}
+        }, { enabled: !!turn }),
+        { label: 'Continue in…', enabled: !!session, submenu: session ? [
+          ...agents.map((a) => item(a.name, () => handOff(session, a.id, pal))),
+          item('Copy hand-off note', () => handOff(session, 'copy', pal)),
+        ] : [{ label: '(no session)', enabled: false }] },
+        item("Today's recap", sayDayRecap),
+        ...(fed ? [item('Feed', () => { act(pal, 'feed'); markFed(); })] : []),
+        { type: 'separator' },
+        item('Focus mode', () => { const on = !palPrefs.focus; setPalPrefs({ focus: on }); saveConfig({ focus: on }); }, { type: 'checkbox', checked: palPrefs.focus }),
+        item('Read results aloud', () => { const on = !palPrefs.speak; setPalPrefs({ speak: on }); saveConfig({ speak: on }); }, { type: 'checkbox', checked: palPrefs.speak }),
+        item('Open dashboard', () => desktop.openDashboard?.()),
+      ];
+      try { desktop.palMenu(items); } catch {}
+    });
+    desktop?.onPalMenu?.((id) => { try { menuActions.get(id)?.(); } catch {} });
+    applyLooks();
 
     // Electron on Windows keeps the old drag regions after the window resizes, so
     // buttons, tabs and links stop taking clicks. Nudging a drag region makes it re-measure.
@@ -1399,6 +1696,7 @@
       // Follow new rows, unless you've scrolled up to read.
       const stick = !replaying && feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
       let item = entries.get(entry.id);
+      const isNew = !item;
       if (!item) {
         feed.querySelector('.none')?.remove();
         item = { entry, el: el('li', 'item') };
@@ -1407,6 +1705,7 @@
       }
       item.entry = entry;
       if (replaying) return; // drawn once when the replay ends (endReplay)
+      onPalActivity(entry, isNew); // streak, danger alarm, tests turning green
       renderEntry(item);
       item.el.hidden = !shown(entry.session);
       if (entry.files?.length) renderFiles();
@@ -1434,6 +1733,7 @@
       replaying = false;
       clearTimeout(replayFallback);
       for (const item of entries.values()) { renderEntry(item); item.el.hidden = !shown(item.entry.session); }
+      seedRedTests(); // which sessions' tests were already failing, so a green run later counts
       renderFiles();
       scheduleRetries();
       refreshCounts();
@@ -2197,6 +2497,7 @@
     let greetName = '';
     function applyConfig(config) {
       greetName = typeof config.name === 'string' ? config.name : '';
+      setPalPrefs(config);
       // How requests read by default (chosen at setup), unless you've picked a view here.
       if (!pickedView() && (config.storyView === 'simple' || config.storyView === 'detailed') && config.storyView !== recapView) { recapView = config.storyView; scheduleRecap(); }
       if (typeof config.sounds === 'boolean' && config.sounds !== sound.on) { sound.on = config.sounds; syncSoundButton(); }
@@ -2563,7 +2864,7 @@
         }
         // The first pal on show waves and says it too.
         const slot = [...slots.values()].find((s) => !s.el.hidden) ?? ($('empty').hidden ? null : { pal: $('empty-pal') });
-        if (slot) { slot.pal.greet?.(); slot.pal.say?.(`${greeting()}! What are we working on today?`, { duration: 5000 }); }
+        if (slot && !palPrefs.focus) { slot.pal.greet?.(); slot.pal.say?.(`${greeting()}! What are we working on today?`, { duration: 5000 }); }
       }
 
       desktop?.onHello?.(() => askProject());
