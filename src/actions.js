@@ -5,6 +5,7 @@
 // 'star', 'sweat', 'z'), or any other text/emoji glyph.
 
 const squashStretch = (y, sx, sy) => `translateY(${y}%) scale(${sx}, ${sy})`;
+const shiver = (x, y, sx, sy) => `translateX(${x}%) translateY(${y}%) scale(${sx}, ${sy})`;
 
 export const actions = {
   jump: {
@@ -217,7 +218,101 @@ export const actions = {
   // High five without hands (pal.highFive()): lean and hop toward that side.
   'high-five-left': towardSide(-1),
   'high-five-right': towardSide(1),
+  // A big yawn (pal.yawn()): a slow stretch up, then a little slump back.
+  yawn: {
+    duration: 1400,
+    easing: 'ease-in-out',
+    keyframes: [
+      { transform: squashStretch(0, 1, 1) },
+      { transform: squashStretch(0, 0.96, 1.07), offset: 0.3 },
+      { transform: squashStretch(0, 0.97, 1.06), offset: 0.6 },
+      { transform: squashStretch(0, 1.03, 0.97), offset: 0.82 },
+      { transform: squashStretch(0, 1, 1) },
+    ],
+  },
+  // A hungry tummy rumbles (<dot-pal hungry>): a tiny wobble.
+  grumble: {
+    duration: 650,
+    easing: 'ease-in-out',
+    keyframes: [
+      { transform: 'rotate(0deg) scale(1, 1)' },
+      { transform: 'rotate(-2deg) scale(1.02, .98)', offset: 0.18 },
+      { transform: 'rotate(2deg) scale(1.02, .98)', offset: 0.36 },
+      { transform: 'rotate(-1.4deg) scale(1.01, .99)', offset: 0.54 },
+      { transform: 'rotate(1deg) scale(1, 1)', offset: 0.72 },
+      { transform: 'rotate(-.4deg) scale(1, 1)', offset: 0.86 },
+      { transform: 'rotate(0deg) scale(1, 1)' },
+    ],
+  },
+  // Hooray (pal.celebrate()): a big happy jump and a little second bounce.
+  celebrate: {
+    duration: 1100,
+    easing: 'linear',
+    keyframes: [
+      { transform: squashStretch(0, 1, 1), easing: 'cubic-bezier(.3,.6,.5,1)' },
+      { transform: squashStretch(0, 1.14, 0.86), offset: 0.12, easing: 'cubic-bezier(.2,.8,.3,1)' },
+      { transform: squashStretch(-4, 0.88, 1.14), offset: 0.17, easing: 'cubic-bezier(.2,.7,.4,1)' },
+      { transform: squashStretch(-26, 0.96, 1.05), offset: 0.4, easing: 'cubic-bezier(.6,0,.8,.3)' },
+      { transform: squashStretch(-2, 0.92, 1.1), offset: 0.6, easing: 'linear' },
+      { transform: squashStretch(0, 1.14, 0.86), offset: 0.64, easing: 'cubic-bezier(.3,.7,.4,1)' },
+      { transform: squashStretch(-6, 0.97, 1.04), offset: 0.78, easing: 'cubic-bezier(.6,0,.8,.3)' },
+      { transform: squashStretch(0, 1.05, 0.95), offset: 0.9, easing: 'ease-out' },
+      { transform: squashStretch(0, 1, 1) },
+    ],
+  },
+  // Nervous (pal.worry()): a small side-to-side shiver.
+  worry: {
+    duration: 700,
+    easing: 'ease-in-out',
+    keyframes: [
+      { transform: shiver(0, 0, 1, 1) },
+      { transform: shiver(-2, 0, 1.01, 0.99), offset: 0.12 },
+      { transform: shiver(2, 0, 1.01, 0.99), offset: 0.25 },
+      { transform: shiver(-2, 0, 1.01, 0.99), offset: 0.38 },
+      { transform: shiver(1.6, 0, 1, 1), offset: 0.5 },
+      { transform: shiver(-1.4, 0, 1, 1), offset: 0.62 },
+      { transform: shiver(1, 0, 1, 1), offset: 0.75 },
+      { transform: shiver(-0.5, 0, 1, 1), offset: 0.88 },
+      { transform: shiver(0, 0, 1, 1) },
+    ],
+  },
+  // Uh-oh (pal.alarm()): a startled jump, then a fast tremble (~0.75 s) that dies down.
+  alarm: {
+    duration: 1300,
+    easing: 'linear',
+    keyframes: [
+      { transform: shiver(0, 0, 1, 1), easing: 'cubic-bezier(.3,.6,.5,1)' },
+      { transform: shiver(0, 0, 1.08, 0.92), offset: 0.06, easing: 'cubic-bezier(.2,.8,.3,1)' },
+      { transform: shiver(0, -10, 0.92, 1.1), offset: 0.2, easing: 'cubic-bezier(.6,0,.8,.4)' },
+      { transform: shiver(0, 0, 1.1, 0.9), offset: 0.34, easing: 'cubic-bezier(.3,.7,.4,1)' },
+      { transform: shiver(-3, 0, 1.02, 0.98), offset: 0.42 },
+      { transform: shiver(3, 0, 1.02, 0.98), offset: 0.48 },
+      { transform: shiver(-3, 0, 1.01, 0.99), offset: 0.54 },
+      { transform: shiver(3, 0, 1.01, 0.99), offset: 0.6 },
+      { transform: shiver(-2.5, 0, 1, 1), offset: 0.66 },
+      { transform: shiver(2.5, 0, 1, 1), offset: 0.72 },
+      { transform: shiver(-2, 0, 1, 1), offset: 0.78 },
+      { transform: shiver(2, 0, 1, 1), offset: 0.84 },
+      { transform: shiver(-1, 0, 1, 1), offset: 0.9 },
+      { transform: shiver(0.5, 0, 1, 1), offset: 0.95 },
+      { transform: shiver(0, 0, 1, 1) },
+    ],
+  },
 };
+
+// The playful hop for energy="sleepy" (lower, a touch slower) and energy="hyper"
+// (higher, a touch quicker): the same bounce with its heights scaled.
+for (const [name, height, time] of [['playful-hop-sleepy', 0.6, 1.1], ['playful-hop-hyper', 1.25, 0.92]]) {
+  const base = actions['playful-hop'];
+  actions[name] = {
+    ...base,
+    duration: Math.round(base.duration * time),
+    keyframes: base.keyframes.map((f) => ({
+      ...f,
+      transform: f.transform.replace(/translateY\((-?[\d.]+)%\)/, (m, y) => `translateY(${+(y * height).toFixed(2)}%)`),
+    })),
+  };
+}
 
 /** Lean and hop toward a side (-1 left, 1 right), the "slap" at ~41 % (450 ms), then back. */
 function towardSide(s) {

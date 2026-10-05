@@ -20,6 +20,9 @@
 //                `<dot-pal hands>` hangs its little mitts. Pick the x where the body's
 //                outline crosses y≈156, so the mitt hangs just outside the body.
 //                Without it the element uses [[16, 156], [184, 156]].
+//   head       – optional [x, y, width]: the middle and width of the top of the head,
+//                where `<dot-pal wear="…">` puts a hat (its brim sits on y). Without
+//                it the element uses [100, 72, 110].
 //   render(p)  – returns { defs, body, accessories, face } SVG strings
 //
 // `render` receives:
@@ -46,6 +49,7 @@ export const characters = {
     cheek: 34,
     eyes: { at: [[86, 160], [118, 160]], r: 10 },
     hands: [[9, 156], [194, 156]],
+    head: [96, 62, 118], // on top of the beret
     render: ({ id, body, fur }) => ({
       defs: `
         <radialGradient id="${id('beret')}" gradientUnits="userSpaceOnUse" cx="70" cy="50" r="110">
@@ -83,6 +87,7 @@ export const characters = {
     cheek: 52,
     eyes: { at: [[64, 96], [136, 96]], r: 17, own: ['wide'] },
     hands: [[19, 156], [181, 156]],
+    head: [100, 70, 100], // between the eye bumps
     render: ({ id, body }) => ({
       defs: `
         <radialGradient id="${id('eyeball')}" cx=".4" cy=".35" r=".7">
@@ -121,6 +126,7 @@ export const characters = {
     cheek: 36,
     eyes: { at: [[74, 137], [126, 137]], r: 12 },
     hands: [[17, 156], [183, 156]],
+    head: [100, 50, 72], // the pointy tip
     render: ({ body }) => ({
       defs: '',
       body: `
@@ -145,6 +151,7 @@ export const characters = {
     cheek: 38,
     eyes: { at: [[76, 134], [124, 134]], r: 11, ink: '#fff' },
     hands: [[10, 156], [190, 156]],
+    head: [100, 66, 100], // over the dip of the heart
     render: ({ id, body }) => ({
       defs: `
         <radialGradient id="${id('lens')}" cx=".35" cy=".3" r=".8">
@@ -179,6 +186,7 @@ export const characters = {
     cheek: 36,
     eyes: { at: [[80, 144], [120, 144]], r: 11 },
     hands: [[17, 156], [183, 156]],
+    head: [104, 66, 92], // below the flame's curl
     render: ({ body }) => ({
       defs: '',
       body: `
@@ -212,6 +220,7 @@ export const characters = {
     cheek: 46,
     eyes: { at: [[76.5, 127], [123.5, 127]], r: 12, ink: '#dff4ff', glow: true },
     hands: [[17, 156], [183, 156]],
+    head: [100, 55, 120],
     render: ({ id, body }) => ({
       defs: `
         <filter id="${id('glow')}" x="-80%" y="-80%" width="260%" height="260%">
@@ -240,6 +249,7 @@ export const characters = {
     cheek: 40,
     eyes: { at: [[78, 142], [122, 142]], r: 11 },
     hands: [[13, 156], [187, 156]],
+    head: [100, 75, 112],
     render: ({ id, body }) => ({
       defs: `
         <radialGradient id="${id('bulb')}" cx=".4" cy=".35" r=".7">
@@ -269,6 +279,7 @@ export const characters = {
     cheek: 42,
     eyes: { at: [[75, 137], [125, 137]], r: 11 },
     hands: [[19, 156], [181, 156]],
+    head: [100, 79, 108], // between the ears
     render: ({ body }) => ({
       defs: '',
       body: `

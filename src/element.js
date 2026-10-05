@@ -121,6 +121,99 @@ const HIGH_FIVE_ARM = [
 /** @internal The arm moves, for tests. */
 export const ARM_MOVES = { wave: WAVE_ARM, startle: STARTLE_ARMS, highFive: HIGH_FIVE_ARM };
 
+// Both hands up for a cheer (celebrate()), with a little wiggle up there.
+const CHEER_ARMS = [
+  { transform: 'rotate(0deg)', easing: 'cubic-bezier(.2,.8,.3,1)' },
+  { transform: 'rotate(-150deg)', offset: 0.2, easing: 'ease-in-out' },
+  { transform: 'rotate(-132deg)', offset: 0.4, easing: 'ease-in-out' },
+  { transform: 'rotate(-152deg)', offset: 0.6, easing: 'ease-in-out' },
+  { transform: 'rotate(-138deg)', offset: 0.78, easing: 'cubic-bezier(.5,0,.6,1)' },
+  { transform: 'rotate(0deg)' },
+];
+ARM_MOVES.cheer = CHEER_ARMS;
+
+// ---------------------------------------------------------------------------
+// Things to wear (<dot-pal wear="…">). Hats are drawn 100 units wide with the
+// brim's centre at (0, 0), then placed and sized from the character's `head`
+// ([x, y, width] of the top of its head); sunglasses sit over the eye anchors.
+
+/** @internal Everything `wear` accepts (anything else draws nothing). */
+export const WEARS = ['witch-hat', 'santa-hat', 'crown', 'sunglasses', 'party-hat'];
+const DEFAULT_HEAD = [100, 72, 110];
+const HATS = {
+  'witch-hat': `
+    <g stroke="#1b1230" stroke-width="3" stroke-linejoin="round">
+      <ellipse fill="#3d2b63" cx="0" cy="-3" rx="54" ry="9"/>
+      <path fill="#3d2b63" d="M-30 -8 C-22 -30 -10 -58 6 -80 C10 -84 18 -82 22 -76 C16 -76 12 -70 14 -60 C18 -40 26 -22 32 -8 Z"/>
+      <path fill="#8a5cf0" d="M-27 -15 C-12 -11 14 -11 29 -15 L32 -7 C14 -3 -14 -3 -30 -7 Z"/>
+    </g>
+    <rect x="-6" y="-15" width="12" height="9" rx="2" fill="none" stroke="#ffd23f" stroke-width="2.6"/>`,
+  'santa-hat': `
+    <path fill="#e8343c" stroke="#7d1418" stroke-width="3" stroke-linejoin="round" d="M-40 -8 C-34 -42 -8 -64 22 -60 C40 -58 52 -44 56 -24 C46 -32 36 -36 28 -32 C34 -24 38 -16 40 -8 Z"/>
+    <circle cx="56" cy="-22" r="10" fill="#fff" stroke="#c9ccd6" stroke-width="2.5"/>
+    <rect x="-48" y="-14" width="96" height="18" rx="9" fill="#fff" stroke="#c9ccd6" stroke-width="2.5"/>`,
+  crown: `
+    <path fill="#ffc933" stroke="#b07a00" stroke-width="3" stroke-linejoin="round" d="M-36 0 L-42 -40 L-19 -20 L0 -50 L19 -20 L42 -40 L36 0 Z"/>
+    <circle cx="0" cy="-14" r="5.5" fill="#ff4d7e"/>
+    <circle cx="-22" cy="-9" r="3.5" fill="#4dc3ff"/>
+    <circle cx="22" cy="-9" r="3.5" fill="#4dc3ff"/>
+    <g fill="#ffe27a" stroke="#b07a00" stroke-width="2"><circle cx="-42" cy="-42" r="4"/><circle cx="0" cy="-52" r="4"/><circle cx="42" cy="-42" r="4"/></g>`,
+  'party-hat': `
+    <g transform="rotate(-10)">
+      <path fill="#4dc3ff" stroke="#1c6f99" stroke-width="3" stroke-linejoin="round" d="M-24 0 L0 -62 L24 0 Q0 6 -24 0 Z"/>
+      <path fill="none" stroke="#ffd23f" stroke-width="5" stroke-linecap="round" d="M-14 -22 L12 -30 M-7 -42 L5 -46"/>
+      <circle cx="0" cy="-64" r="7" fill="#ff4d7e" stroke="#a3214a" stroke-width="2.5"/>
+    </g>`,
+};
+
+/** @internal [x, y, width] of the top of a character's head, for hats (`head` in characters.js). */
+export const headAnchor = (def) =>
+  Array.isArray(def?.head) && def.head.length === 3 && def.head.every(Number.isFinite) && def.head[2] > 0
+    ? def.head : DEFAULT_HEAD;
+
+/** @internal A hat for the top of the head ('' for none, sunglasses or anything unknown). */
+export function hatSVG(kind, def) {
+  const art = Object.hasOwn(HATS, kind) ? HATS[kind] : '';
+  if (!art) return '';
+  const [x, y, w] = headAnchor(def);
+  return `<g class="dp-wear dp-wear-hat" transform="translate(${n2(x)} ${n2(y)}) scale(${n2(w / 100)})">${art}</g>`;
+}
+
+/** @internal Sunglasses over the two eye anchors, drawn above the eyes ('' without anchors). */
+export function shadesSVG(eyes) {
+  if (!eyes?.at) return '';
+  const r = eyes.r ?? 10;
+  const [[lx, ly], [rx, ry]] = eyes.at;
+  const w = r * 2.7;
+  const h = r * 2.15;
+  const lens = (x, y) => `<rect x="${n2(x - w / 2)}" y="${n2(y - h / 2)}" width="${n2(w)}" height="${n2(h)}" rx="${n2(r * 0.85)}"/>`;
+  const shine = (x, y) => `<path d="M${n2(x - w * 0.3)} ${n2(y - h * 0.12)} Q${n2(x - w * 0.22)} ${n2(y - h * 0.32)} ${n2(x - w * 0.02)} ${n2(y - h * 0.34)}"/>`;
+  const sw = n2(Math.max(2.4, r * 0.26));
+  return `<g class="dp-wear dp-wear-shades">
+    <g fill="none" stroke="#101014" stroke-width="${sw}" stroke-linecap="round">
+      <path d="M${n2(lx + w / 2)} ${n2(ly - h * 0.18)} Q${n2((lx + rx) / 2)} ${n2(Math.min(ly, ry) - h * 0.5)} ${n2(rx - w / 2)} ${n2(ry - h * 0.18)}"/>
+      <path d="M${n2(lx - w / 2)} ${n2(ly - h * 0.2)} L${n2(lx - w / 2 - r * 1.1)} ${n2(ly - h * 0.32)} M${n2(rx + w / 2)} ${n2(ry - h * 0.2)} L${n2(rx + w / 2 + r * 1.1)} ${n2(ry - h * 0.32)}"/>
+    </g>
+    <g fill="#101014" stroke="#000" stroke-width="${n2(sw * 0.6)}">${lens(lx, ly)}${lens(rx, ry)}</g>
+    <g fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="${n2(sw * 0.8)}" stroke-linecap="round">${shine(lx, ly)}${shine(rx, ry)}</g>
+  </g>`;
+}
+
+/** @internal Worried eyebrows over the eye anchors (shown by faces with `brows: true`). */
+export function browsSVG({ at, r = 10, ink = INK }) {
+  return `<g class="dp-brows" fill="none" stroke="${ink}" stroke-width="${n2(r * 0.3)}" stroke-linecap="round">${at.map(([x, y], i) => {
+    const s = i ? 1 : -1; // toward the outside
+    return `<path d="M${n2(x + s * 0.95 * r)} ${n2(y - 1.45 * r)} Q${n2(x + s * 0.1 * r)} ${n2(y - 1.75 * r)} ${n2(x - s * 0.6 * r)} ${n2(y - 2.05 * r)}"/>`;
+  }).join('')}</g>`;
+}
+
+/**
+ * @internal Whether a pal does an opt-in idle extra: the yawn with energy="sleepy",
+ * the tummy rumble with `hungry`. Never when it's `static`.
+ */
+export const wantsYawns = (el) => el?.getAttribute?.('energy') === 'sleepy' && !el.hasAttribute('static');
+export const wantsGrumbles = (el) => !!el?.hasAttribute?.('hungry') && !el.hasAttribute('static');
+
 // Petting: slow strokes back and forth over the pal.
 const PET_FLIPS = 3;      // direction changes…
 const PET_WINDOW = 1600;  // …within this many ms
@@ -222,18 +315,24 @@ const PARTICLES = {
   z: { stroke: '#fff', d: 'M-5.5 -6 H5.5 L-5.5 6 H5.5' },
 };
 export const PARTICLE_KINDS = Object.keys(PARTICLES);
+// Used inside the pal only (celebrate(), alarm()), so not listed in PARTICLE_KINDS.
+Object.assign(PARTICLES, {
+  confetti: { fill: '#ffd23f', d: 'M-6 -3 H6 V3 H-6 Z' }, // drawn in many colours, see #burst
+  alert: { fill: '#ff3b3b', d: 'M-3 -11 H3 L2 3.5 H-2 Z M-3 8 A3 3 0 1 0 3 8 A3 3 0 1 0 -3 8 Z' }, // a red "!"
+});
+const CONFETTI = ['#ff4d7e', '#ffd23f', '#4dc3ff', '#7be36b', '#b07bff', '#ff9d2e'];
 // Old actions used a text glyph; map the ones we ship to shapes.
 const GLYPHS = { '♥': 'heart', '❤': 'heart', '✦': 'sparkle', '✧': 'sparkle', '★': 'star', z: 'z' };
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /** One particle's path, centred on (0, 0) in a 24×24 box. */
-function particleShape(kind) {
+function particleShape(kind, fill, d) {
   const p = PARTICLES[kind];
   if (!p) return '';
   const paint = p.stroke
     ? `fill="none" stroke="${p.stroke}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"`
-    : `fill="${p.fill}"`;
-  return `<path ${paint} d="${p.d}"/>`;
+    : `fill="${fill ?? p.fill}"`;
+  return `<path ${paint} d="${d ?? p.d}"/>`;
 }
 
 /** @internal Inline SVG for one particle (a standalone icon). */
@@ -249,15 +348,17 @@ export function particleSVG(kind) {
 export function particleFrames(kind, { x0 = 0, y0 = 0, dx = 0, dy = 0, rot = 0 } = {}) {
   const frames = [];
   // A frame right at 20 %, where the fade-in peaks.
+  const fall = kind === 'sweat' || kind === 'confetti'; // these fall, speeding up
   for (const k of [0, 0.1, 0.2, 0.35, 0.5, 0.65, 0.8, 0.9, 1]) {
-    const ease = kind === 'sweat' ? k * k : 1 - (1 - k) ** 2;
-    const x = dx * (kind === 'sweat' ? k : ease);
+    const ease = fall ? k * k : 1 - (1 - k) ** 2;
+    const x = dx * (fall ? k : ease);
     const y = dy * ease;
     const opacity = k < 0.2 ? k / 0.2 : 1 - (k - 0.2) / 0.8;
     const scale = k < 0.2 ? 0.55 + (0.45 * k) / 0.2 : 1 + (0.4 * (k - 0.2)) / 0.8;
     let r = rot;
     if (kind === 'heart') r += Math.sin(k * Math.PI * 3) * 16;
     else if (kind === 'sparkle' || kind === 'star') r += k * 140;
+    else if (kind === 'confetti') r += k * 520;
     else if (kind === 'z') r += Math.sin(k * Math.PI * 2) * 10;
     frames.push({
       offset: n2(k),
@@ -386,6 +487,17 @@ const styles = `
   :host([idle="bounce"]) .dp-arm-s { animation: dp-arm-bob 1.3s ease-in-out infinite var(--dp-delay, 0s); }
   :host([mood="happy"]) .dp-arm-s { animation: dp-arm-bob .9s ease-in-out infinite; }
   :host([tiny]) .dp-arms { display: none; }
+
+  /* -- things to wear, worried brows, a yawn, hunger ------------------------ */
+  .dp-wear { pointer-events: none; }
+  :host([tiny]) .dp-wear { display: none; }
+  .dp-brows { opacity: 0; transition: opacity .2s; }
+  .dp-root[data-brows] .dp-brows { opacity: 1; }
+  /* (More specific than the "emote mouth hides the rest" rule further down.) */
+  .dp-root[data-mouth="yawn"] .dp-mouth .dp-m-yawn { opacity: 1; transform: scale(1); }
+  /* A hungry pal, when nothing else is going on: slower, shallower breaths and tired eyes. */
+  :host([hungry]:not([mood])) .dp-idle { animation-duration: 4.8s; --dp-breath: .55; }
+  :host([hungry]:not([mood])) .dp-blink { transform: scaleY(.78); }
   @keyframes dp-arm-sway {
     0%, 100% { transform: rotate(-2deg); }
     50%      { transform: rotate(6deg); }
@@ -722,7 +834,7 @@ let scriptSeq = 0;
 // ---------------------------------------------------------------------------
 
 export class DotPal extends Base {
-  static observedAttributes = ['character', 'color', 'size', 'label', 'mood', 'state', 'idle', 'lean', 'hands', 'playful', 'static'];
+  static observedAttributes = ['character', 'color', 'size', 'label', 'mood', 'state', 'idle', 'lean', 'hands', 'playful', 'static', 'wear', 'energy', 'hungry'];
 
   #n = ++uid;
   #uid = `dp${this.#n}`;
@@ -783,6 +895,10 @@ export class DotPal extends Base {
   #glancing = false;
   #pet = { x: 0, t: 0, dir: 0, run: 0, flips: [] };
   #lastPet = 0;
+  #yawnTimer = 0; // energy="sleepy": a yawn now and then
+  #grumbleTimer = 0; // hungry: a tummy rumble now and then
+  #holdUntil = 0; // a priority line is up until then
+  #heldSay = null; // the last ordinary line that arrived meanwhile: [text, options]
 
   constructor() {
     super();
@@ -866,6 +982,7 @@ export class DotPal extends Base {
     fitOnResize();
     this.#scheduleBlink();
     this.#scheduleHop();
+    this.#scheduleExtras();
     if (this.#greetPending) {
       this.#greetPending = false;
       this.greet();
@@ -887,6 +1004,10 @@ export class DotPal extends Base {
     this.#dizzy = false;
     clearTimeout(this.#hopTimer);
     this.#hopTimer = 0;
+    clearTimeout(this.#yawnTimer);
+    clearTimeout(this.#grumbleTimer);
+    this.#yawnTimer = 0;
+    this.#grumbleTimer = 0;
     if (this.#foodShown) this.hideFood();
   }
 
@@ -901,7 +1022,9 @@ export class DotPal extends Base {
     else if (name === 'label') this.#applyLabel();
     else if (name === 'state') this.#applyState();
     else if (name === 'lean') this.#lean(this.#gaze.x);
-    else if (name === 'playful' || name === 'static') this.#scheduleHop(); // starts or stops the idle hop now
+    else if (name === 'playful') this.#scheduleHop(); // starts or stops the idle hop now
+    else if (name === 'static' || name === 'energy') { this.#scheduleHop(); this.#scheduleExtras(); }
+    else if (name === 'hungry') this.#scheduleExtras();
     else if (this.#def) this.#render();
   }
 
@@ -950,6 +1073,24 @@ export class DotPal extends Base {
   /** Little mitt hands at the pal's sides (the `hands` attribute; off by default). */
   get hands() { return this.hasAttribute('hands'); }
   set hands(v) { this.toggleAttribute('hands', !!v); }
+
+  /** Something to wear: 'witch-hat' · 'santa-hat' · 'crown' · 'sunglasses' · 'party-hat', or '' for nothing. */
+  get wear() {
+    const v = this.getAttribute('wear');
+    return WEARS.includes(v) ? v : '';
+  }
+  set wear(v) { v ? this.setAttribute('wear', String(v)) : this.removeAttribute('wear'); }
+
+  /** How lively the idle pal is: 'sleepy' (fewer, lower hops and a yawn now and then) · 'normal' · 'hyper'. */
+  get energy() {
+    const v = this.getAttribute('energy');
+    return v === 'sleepy' || v === 'hyper' ? v : 'normal';
+  }
+  set energy(v) { v && v !== 'normal' ? this.setAttribute('energy', String(v)) : this.removeAttribute('energy'); }
+
+  /** A hungry pal looks a little droopy and its tummy rumbles now and then; feed() clears it. */
+  get hungry() { return this.hasAttribute('hungry'); }
+  set hungry(v) { this.toggleAttribute('hungry', !!v); }
 
   /** True when the pal is drawn smaller than 48 px (set automatically as the `tiny` attribute). */
   get tiny() { return this.#tiny; }
@@ -1042,16 +1183,26 @@ export class DotPal extends Base {
    * Show a speech bubble. It hides after `duration` ms (default: based on
    * length); pass `duration: 0` to keep it until `say('')` is called.
    */
-  say(text, { duration } = {}) {
+  say(text, { duration, priority = false } = {}) {
+    // A priority line (a reaction) stays up for its whole duration; ordinary lines, like
+    // status text from setState(), that arrive meanwhile wait, and the last one shows
+    // right after it. Without `priority`, say() works as it always did.
+    if (!priority && text && Date.now() < this.#holdUntil) { this.#heldSay = [text, { duration }]; return; }
     clearTimeout(this.#sayTimer);
     this.#saying = !!text;
-    if (!text) return this.#syncBubble();
+    if (!text) { this.#holdUntil = 0; this.#heldSay = null; return this.#syncBubble(); }
     this.#showBubble({ text });
     const ms = duration ?? Math.min(6000, 1800 + text.length * 60);
+    this.#holdUntil = priority && ms > 0 ? Date.now() + ms : 0;
+    if (!priority) this.#heldSay = null;
     if (ms > 0) {
       this.#sayTimer = setTimeout(() => {
         this.#saying = false;
-        this.#syncBubble();
+        this.#holdUntil = 0;
+        const held = this.#heldSay;
+        this.#heldSay = null;
+        if (held) this.say(...held);
+        else this.#syncBubble();
       }, ms);
     }
   }
@@ -1137,6 +1288,9 @@ export class DotPal extends Base {
       },
       { at: calm ? 100 : 320, do: () => this.#burst('heart', 5) },
     ], 3000);
+    // Not hungry any more; the page hears about it.
+    if (this.hasAttribute('hungry')) this.removeAttribute('hungry');
+    this.dispatchEvent(new CustomEvent('dotpal-fed', { bubbles: true, composed: true }));
   }
 
   /** Show the treat beside the pal (it bobs gently). Call it once per idle spell. */
@@ -1240,6 +1394,61 @@ export class DotPal extends Base {
       }
       resolve();
     }, Math.max(0, Number(ms) || 0)));
+  }
+
+  /** A big yawn: eyes closed, mouth wide open, a slow stretch up (~1.4 s), then back. */
+  yawn() {
+    const owner = {};
+    if (!reducedMotion()) this.play('yawn');
+    return this.#gestureRun('yawn', [
+      { from: 0, to: 1400, enter: () => this.#setFace({ eyes: 'closed', mouth: 'yawn' }, owner), exit: () => this.#clearFace(owner) },
+    ], 1400);
+  }
+
+  /** Hooray: a big happy jump with confetti (and both hands up with `hands`), ~1.8 s. */
+  celebrate() {
+    const owner = {};
+    if (!reducedMotion()) {
+      this.play('celebrate');
+      for (const arm of this.#arms()) this.#playArm(arm, CHEER_ARMS, 1600);
+    }
+    return this.#gestureRun('celebrate', [
+      { from: 0, to: 1800, enter: () => this.#setFace({ ...EMOTE_FACES.happy, eyes: 'star' }, owner), exit: () => this.#clearFace(owner) },
+      { at: 160, do: () => this.#burst('confetti', 22) },
+      { at: 480, do: () => this.#burst('confetti', 12) },
+    ], 1800);
+  }
+
+  /** Worried for `ms` (default 3000, at most 60 000): raised brows, a wobbly mouth, sweat drops and a nervous shiver. */
+  worry(ms = 3000) {
+    const hold = Math.min(60_000, Math.max(0, Number(ms) || 0));
+    const calm = reducedMotion();
+    const owner = {};
+    const cues = [
+      { from: 0, to: hold, enter: () => this.#setFace({ eyes: null, mouth: 'thinking', brows: true }, owner), exit: () => this.#clearFace(owner) },
+    ];
+    // A shiver and a drop of sweat every ~1.4 s while it lasts.
+    for (let t = 0; t < hold; t += 1400) {
+      cues.push({ at: t, do: () => { if (!calm) this.play('worry'); this.#burst('sweat', 1); } });
+    }
+    return this.#gestureRun('worry', cues, hold);
+  }
+
+  /**
+   * Uh-oh: a startled jump with wide eyes and a red "!" above the head, a fast tremble
+   * (~0.8 s), then a nervous face for ~1.5 s.
+   */
+  alarm() {
+    const wide = {};
+    const nervous = {};
+    if (!reducedMotion()) this.play('alarm');
+    const [hx, hy] = headAnchor(this.#def);
+    return this.#gestureRun('alarm', [
+      { from: 0, to: 800, enter: () => this.#setFace(EMOTE_FACES.wide, wide), exit: () => this.#clearFace(wide) },
+      { at: 60, do: () => this.#burst('alert', 1, { left: hx / 2, top: (hy - 24) / 2 }) },
+      { from: 800, to: 2300, enter: () => this.#setFace({ eyes: null, mouth: 'thinking', brows: true }, nervous), exit: () => this.#clearFace(nervous) },
+      { at: 900, do: () => this.#burst('sweat', 1) },
+    ], 2300);
   }
 
   /** The arms' gesture layers, left then right (none without `hands`, or when tiny). */
@@ -1538,6 +1747,9 @@ export class DotPal extends Base {
   #applyStateText() {
     const text = this.#stateText;
     const transient = ['done', 'error', 'speaking', 'idle'].includes(this.state);
+    // A state change never cuts a priority line short, not even one with no text:
+    // it waits, like any other plain line, and applies when the priority line ends.
+    if (Date.now() < this.#holdUntil) { this.#heldSay = [text || '', { duration: transient ? undefined : 0 }]; return; }
     this.say(text || '', { duration: transient ? undefined : 0 });
   }
 
@@ -1615,6 +1827,7 @@ export class DotPal extends Base {
     if (face?.mouth) this.#root.dataset.mouth = face.mouth;
     else delete this.#root.dataset.mouth;
     this.#root.toggleAttribute('data-cheeks', !!face?.cheeks);
+    this.#root.toggleAttribute('data-brows', !!face?.brows);
     let eyes = face?.eyes ?? null;
     if (!eyes) eyes = this.state === 'error' && this.mood === 'sad' ? 'x' : MOOD_EYES[this.mood] ?? null;
     return this.#setEyes(eyes, animate);
@@ -1943,6 +2156,8 @@ export class DotPal extends Base {
       ${eyes ? `<g class="dp-alteyes"${glow}><g class="dp-ae-look">${eyes.at
         .map(([x, y]) => `<g transform="translate(${x} ${y})"><g class="dp-ae-s"></g></g>`)
         .join('')}</g></g>` : ''}
+      ${eyes ? browsSVG(eyes) : ''}
+      ${this.wear === 'sunglasses' ? shadesSVG(eyes) : hatSVG(this.wear, def)}
       <g class="dp-expr" transform="translate(${mx} ${my})">
         <g class="dp-turn">
           <g class="dp-cheeks" fill="#ff4d7e" filter="url(#${id('blush')})">
@@ -1958,6 +2173,7 @@ export class DotPal extends Base {
             <path class="dp-m-shy" d="M-6 1 Q0 6 6 1"/>
             <path class="dp-m-working" d="M-7 2 L7 2"/>
             <ellipse class="dp-m-speaking" fill="${ink}" stroke="none" rx="8" ry="7"/>
+            <g class="dp-m-yawn" stroke="none"><ellipse fill="${ink}" rx="9" ry="12" cy="2"/><ellipse fill="#ff6f8e" rx="5.5" ry="4" cy="8"/></g>
           </g>
         </g>
       </g>`;
@@ -2049,14 +2265,58 @@ export class DotPal extends Base {
     clearTimeout(this.#hopTimer);
     this.#hopTimer = 0;
     if (!this.isConnected || !isPlayful(this) || reducedMotion() || this.#tiny) return;
+    // energy="sleepy": half as often and lower; energy="hyper": more often and higher.
+    const energy = this.energy;
+    const pace = energy === 'sleepy' ? 2 : energy === 'hyper' ? 0.6 : 1;
     this.#hopTimer = setTimeout(() => {
       this.#hopTimer = 0;
       if (!this.isConnected || !isPlayful(this)) return;
-      if (this.mood === 'neutral' && this.state === 'idle' && !this.#anim && !this.#gesture && !this.#dizzy && !this.#saying) {
-        this.play('playful-hop');
-      }
+      if (this.#calmIdle()) this.play(energy === 'normal' ? 'playful-hop' : `playful-hop-${energy}`);
       this.#scheduleHop();
-    }, rand(8000, 15000));
+    }, rand(8000, 15000) * pace);
+  }
+
+  /** True when the pal is just idling: calm, no agent, nothing playing. */
+  #calmIdle() {
+    return this.mood === 'neutral' && this.state === 'idle' && !this.#anim && !this.#gesture && !this.#dizzy && !this.#saying;
+  }
+
+  /** @internal Whether the yawn / tummy-rumble timers are running (for tests). */
+  get _extrasScheduled() { return { yawn: !!this.#yawnTimer, grumble: !!this.#grumbleTimer }; }
+
+  /**
+   * energy="sleepy": a yawn every 40–90 s. hungry: a tummy rumble every 30–60 s.
+   * Both only while calmly idle, and never when `static`. Called again when
+   * `energy`, `hungry` or `static` changes.
+   */
+  #scheduleExtras() {
+    clearTimeout(this.#yawnTimer);
+    clearTimeout(this.#grumbleTimer);
+    this.#yawnTimer = 0;
+    this.#grumbleTimer = 0;
+    if (!this.isConnected) return;
+    if (wantsYawns(this)) {
+      const yawnLater = () => {
+        this.#yawnTimer = setTimeout(() => {
+          this.#yawnTimer = 0;
+          if (!this.isConnected || !wantsYawns(this)) return;
+          if (this.#calmIdle()) this.yawn();
+          yawnLater();
+        }, rand(40_000, 90_000));
+      };
+      yawnLater();
+    }
+    if (wantsGrumbles(this)) {
+      const grumbleLater = () => {
+        this.#grumbleTimer = setTimeout(() => {
+          this.#grumbleTimer = 0;
+          if (!this.isConnected || !wantsGrumbles(this)) return;
+          if (this.#calmIdle() && !reducedMotion()) this.play('grumble');
+          grumbleLater();
+        }, rand(30_000, 60_000));
+      };
+      grumbleLater();
+    }
   }
 
   // -- particles -------------------------------------------------------------
@@ -2112,24 +2372,46 @@ export class DotPal extends Base {
         dy = -rand(0.25, 0.65) * size;
         delay = i * 60 + rand(0, 50);
       }
+      let fill;
+      let d;
+      if (shape === 'confetti') {
+        // Pops up from the head, spreads wide and flutters down, spinning.
+        px = size * rand(0.05, 0.08);
+        left = rand(30, 70);
+        top = rand(8, 24);
+        dx = rand(-0.75, 0.75) * size;
+        dy = rand(0.35, 0.8) * size;
+        duration = rand(1300, 1800);
+        delay = i * 14 + rand(0, 60);
+        fill = CONFETTI[i % CONFETTI.length];
+        if (i % 3 === 2) d = 'M-4.5 0 A4.5 4.5 0 1 0 4.5 0 A4.5 4.5 0 1 0 -4.5 0 Z'; // a dot now and then
+      } else if (shape === 'alert') {
+        px = size * 0.2;
+        dx = 0;
+        dy = -size * 0.12;
+        duration = 1300;
+        delay = 0;
+      }
       if (at) {
         ({ left, top } = at);
-        dx = rand(-0.28, 0.28) * size;
-        dy = -rand(0.12, 0.34) * size;
-        duration = rand(650, 950);
-        delay = i * 25;
+        if (shape !== 'alert') {
+          dx = rand(-0.28, 0.28) * size;
+          dy = -rand(0.12, 0.34) * size;
+          duration = rand(650, 950);
+          delay = i * 25;
+        }
       }
       // Drawn in an SVG layer over the pal: SVG content outside its box never adds scrollbars.
       const el = document.createElementNS(SVG_NS, 'g');
       el.setAttribute('class', 'dp-particle');
       el.innerHTML = shape
-        ? `<g transform="scale(${n2(px / 24)})">${particleShape(shape)}</g>`
+        ? `<g transform="scale(${n2(px / 24)})">${particleShape(shape, fill, d)}</g>`
         : `<text font-size="${n2(px)}" text-anchor="middle" dominant-baseline="central"></text>`;
       if (!shape) el.firstChild.textContent = kind;
       this.#fx.append(el);
       const x0 = (left / 100) * size;
       const y0 = (top / 100) * height;
-      el.animate(particleFrames(shape ?? 'glyph', { x0, y0, dx, dy, rot: shape === 'sweat' ? 0 : rand(-20, 20) }), {
+      el.animate(particleFrames(shape ?? 'glyph', { x0, y0, dx, dy, rot: shape === 'sweat' || shape === 'alert' ? 0 : rand(-20, 20) }), {
         duration, delay, easing: 'linear', fill: 'backwards',
       }).finished.catch(() => {}).finally(() => el.remove());
     }

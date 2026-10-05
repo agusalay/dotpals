@@ -2,7 +2,12 @@ export type BuiltInCharacter = 'blu' | 'hop' | 'sunny' | 'lovi' | 'muse' | 'grok
 export type BuiltInAction =
   | 'jump' | 'squish' | 'wiggle' | 'shake' | 'nod' | 'spin' | 'love'
   | 'hop' | 'jitter' | 'hello' | 'dizzy'
-  | 'playful-hop' | 'feed' | 'wave' | 'startle' | 'pet' | 'high-five-left' | 'high-five-right';
+  | 'playful-hop' | 'feed' | 'wave' | 'startle' | 'pet' | 'high-five-left' | 'high-five-right'
+  | 'yawn' | 'grumble' | 'celebrate' | 'worry' | 'alarm' | 'playful-hop-sleepy' | 'playful-hop-hyper';
+/** Things a pal can wear (`wear` attribute); `''` is nothing. */
+export type Wear = 'witch-hat' | 'santa-hat' | 'crown' | 'sunglasses' | 'party-hat' | '';
+/** How lively an idle pal is (`energy` attribute). */
+export type Energy = 'sleepy' | 'normal' | 'hyper';
 /** Which side a hand gesture or glance goes to. */
 export type Side = 'left' | 'right';
 /** Parts you can style with `dot-pal::part(…)`. */
@@ -51,6 +56,11 @@ export interface CharacterDefinition {
    * viewBox units. Default: `[[16, 156], [184, 156]]`.
    */
   hands?: [[number, number], [number, number]];
+  /**
+   * `[x, y, width]` of the top of the head, in viewBox units: where `wear` puts a hat
+   * (its brim sits on `y`). Default: `[100, 72, 110]`. Sunglasses use `eyes` instead.
+   */
+  head?: [number, number, number];
   /**
    * Returns SVG markup for a 200×200 viewBox. `body` is wrapped in the fur
    * filter. Use `.dp-blink` and `.dp-look` classes to opt into blinking and
@@ -101,6 +111,25 @@ export declare class DotPal extends HTMLElement {
   playful: boolean;
   /** Little mitt hands at the pal's sides (the `hands` attribute; off by default). Hidden while tiny. */
   hands: boolean;
+  /**
+   * Something on the head (the `wear` attribute): a hat placed from the character's
+   * `head`, or sunglasses over its eyes. Unknown values read as `''` and draw nothing.
+   * Hidden while tiny.
+   */
+  wear: Wear;
+  /**
+   * How lively the idle pal is (the `energy` attribute, default `'normal'`). With
+   * `playful`, `'sleepy'` hops half as often and lower, `'hyper'` more often and
+   * higher. `'sleepy'` also yawns every 40–90 s while calmly idle (not when `static`).
+   * Never changes `state` or `mood`.
+   */
+  energy: Energy;
+  /**
+   * A hungry pal (the `hungry` attribute): slower, shallower breaths and tired eyes
+   * while neutral, and a tummy rumble every 30–60 s while idle (not when `static`).
+   * `feed()` clears it.
+   */
+  hungry: boolean;
   // The pal leans slightly toward the pointer; the attribute lean="none" turns that off.
   /** True while the pal is drawn smaller than 48 px (reflected as the `tiny` attribute): no fur, bigger eyes. */
   readonly tiny: boolean;
@@ -119,7 +148,13 @@ export declare class DotPal extends HTMLElement {
   static pointAt(x: number, y: number): void;
   play(action: BuiltInAction | (string & {})): Promise<void>;
   setState(state: AgentState, options?: { text?: string }): void;
-  say(text: string, options?: { duration?: number }): void;
+  /**
+   * Show a speech bubble for `duration` ms (default: based on length; `0` keeps it
+   * until `say('')`). With `priority: true` the line stays up for its whole duration:
+   * ordinary lines (e.g. from `setState`) that arrive meanwhile wait, and the last
+   * one shows right after. `say('')` clears the bubble and anything waiting.
+   */
+  say(text: string, options?: { duration?: number; priority?: boolean }): void;
   flash(mood: Mood, ms?: number): void;
   during<T>(
     task: Promise<T> | (() => Promise<T>),
@@ -164,6 +199,20 @@ export declare class DotPal extends HTMLElement {
    * then back to the usual gaze. Resolves when the eyes are back.
    */
   glance(side?: Side, ms?: number): Promise<void>;
+  /** A big yawn: eyes closed, mouth wide open, a slow stretch up, ~1.4 s. */
+  yawn(): Promise<void>;
+  /** Hooray: a big jump with confetti and star eyes (both hands up with `hands`), ~1.8 s. */
+  celebrate(): Promise<void>;
+  /**
+   * Worried for `ms` (default 3000, at most 60 000): raised brows, a wobbly mouth,
+   * sweat drops and a nervous shiver.
+   */
+  worry(ms?: number): Promise<void>;
+  /**
+   * Uh-oh: a startled jump with wide eyes and a red "!" above the head, a fast
+   * tremble, then a nervous face, ~2.3 s.
+   */
+  alarm(): Promise<void>;
 }
 
 export declare const characters: Record<string, CharacterDefinition>;
@@ -205,6 +254,8 @@ export interface DotPalActionEvent extends CustomEvent<{ action: string }> {}
 export interface DotPalPokeEvent extends CustomEvent<{ count: number }> {}
 /** Fired when a `playful` pal is petted (slow strokes back and forth over it); at most every 6 s. */
 export interface DotPalPetEvent extends CustomEvent<null> {}
+/** Fired by `feed()` (which also clears `hungry`). */
+export interface DotPalFedEvent extends CustomEvent<null> {}
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -216,5 +267,6 @@ declare global {
     'dotpal-state': CustomEvent<{ state: AgentState; text?: string }>;
     'dotpal-poke': DotPalPokeEvent;
     'dotpal-pet': DotPalPetEvent;
+    'dotpal-fed': DotPalFedEvent;
   }
 }

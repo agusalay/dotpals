@@ -437,12 +437,16 @@ const stop = pal.watch('#login-form');
 
 // Speech bubble
 pal.say('Hi! Ask me anything.');
+// A priority line stays up for its whole duration; ordinary lines (like setState text)
+// that arrive meanwhile wait, and the last one shows right after
+pal.say('Welcome back!', { duration: 3000, priority: true });
 
 // Show a mood for a moment
 pal.flash('surprised', 1500);
 
 // One-shot actions: jump · squish · wiggle · shake · nod · spin · love · hop · jitter · hello · dizzy
 // · playful-hop · feed · wave · startle · pet · high-five-left · high-five-right
+// · yawn · grumble · celebrate · worry · alarm · playful-hop-sleepy · playful-hop-hyper
 await pal.play('love');
 
 // Say hello: rise up from below, squint happily, hop and blink twice
@@ -463,7 +467,13 @@ await pal.glance('left', 1500); // look at a neighbour, then back to the cursor
 // A treat: a cookie bobs beside the pal; clicking it calls feed()
 pal.showFood();
 pal.hideFood();
-pal.feed(); // a hop and a chomp, a happy face and hearts
+pal.feed(); // a hop and a chomp, a happy face and hearts; clears `hungry`, fires dotpal-fed
+
+// Reactions: each resolves when it's done
+await pal.yawn();       // eyes closed, mouth wide open, a slow stretch (~1.4 s)
+await pal.celebrate();  // a big jump with confetti (hands up with `hands`)
+await pal.worry(3000);  // raised brows, sweat drops, a nervous shiver, for 3 s
+await pal.alarm();      // a startled jump, a red "!", a tremble, then a nervous face
 ```
 
 ### Faces and reactions
@@ -472,6 +482,8 @@ pal.feed(); // a hop and a chomp, a happy face and hearts
 - **Reactions**: hover and it blinks; rest the mouse on it for 2 seconds and it gets heart eyes; click and it plays its tap action with a "hey" face; click 3 times quickly and it gets dizzy. Each click fires `dotpal-poke` with `{ count }`. `static` turns these off.
 - **Playful** (opt-in, the `playful` attribute): while calm and idle, the pal bounces like a ball every 8 to 15 seconds, and stroking it slowly back and forth closes its eyes happily, with a few hearts and a `dotpal-pet` event (at most every 6 seconds). Never while `static`; no bounce with reduced motion.
 - **Hands** (opt-in, the `hands` attribute): two little mitts at the pal's sides that sway, wave, fly up on `startle()` and do high fives. Hidden while tiny; no sway with reduced motion. Characters set where they hang with `hands: [[x, y], [x, y]]`.
+- **Things to wear** (opt-in, the `wear` attribute): a witch hat, Santa hat, crown, party hat or sunglasses. Hats sit on the head and move with the body; characters set where with `head: [x, y, width]`. Sunglasses go over the eyes. Hidden while tiny.
+- **Energy and hunger** (opt-in): `energy="sleepy"` yawns every 40 to 90 seconds while calmly idle, and with `playful` hops half as often and lower (`hyper`: more often and higher). `hungry` breathes slower with tired eyes and its tummy rumbles every 30 to 60 seconds. Neither happens while `static`, and neither changes `state` or `mood`.
 - **Tiny pals**: under 48 px a pal becomes an avatar (the `tiny` attribute and the read-only `pal.tiny` property): no fur, bigger eyes, no glow and no particles.
 - **Pointing from outside the page**: `DotPal.pointAt(x, y)` tells every pal where the cursor is (viewport CSS px), for apps that track it themselves. `DotPal.emotes` lists every emote.
 
@@ -490,6 +502,9 @@ pal.feed(); // a hop and a chomp, a happy face and hearts
 | `static`    | boolean: turns off the hover and click reactions (and `playful`) | – |
 | `playful`   | boolean: a ball-bounce hop now and then while idle, and petting | – |
 | `hands`     | boolean: little mitt hands at the sides | – |
+| `wear`      | `witch-hat` · `santa-hat` · `crown` · `sunglasses` · `party-hat` (anything else: nothing) | nothing |
+| `energy`    | `sleepy` · `normal` · `hyper`: with `playful`, fewer and lower or more and higher hops; `sleepy` also yawns now and then | `normal` |
+| `hungry`    | boolean: droopier breathing and a tummy rumble now and then; `feed()` clears it | – |
 | `label`     | accessible name | the character's name |
 | `tiny`      | set by the pal itself while it's smaller than 48 px | – |
 
@@ -503,6 +518,7 @@ pal.addEventListener('dotpal-mood',   (e) => e.detail); // { mood }
 pal.addEventListener('dotpal-action', (e) => e.detail); // { action }
 pal.addEventListener('dotpal-poke',   (e) => e.detail); // { count }: quick clicks in a row
 pal.addEventListener('dotpal-pet',    () => {});        // a playful pal was petted
+pal.addEventListener('dotpal-fed',    () => {});        // feed() ran (and cleared hungry)
 ```
 
 ### Styling
