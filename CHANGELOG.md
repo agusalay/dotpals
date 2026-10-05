@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Opening the chat in small mode could push the window off the top of the screen.** The window now stays inside the work area; the pal moves down a little instead.
 - **The first chat message waited for OpenCode to start.** With chat on, the bridge now warms up OpenCode (`opencode serve`) about a second after the bridge starts, so the first message goes out immediately instead of waiting for the server to boot. Opt out with `DOTPALS_OPENCODE_WARM=0`. Turning chat on from off also triggers the warm-up.
 - **Chat replies showed as full speech bubbles.** Replies in small mode now use a compact `.chat-reply` bubble that fits in the small window without pushing the pal off screen.
+- **Dismissing the last session brought its pal back for a moment.** The pal said hello again and left 6 seconds later. Now it stays gone, and the waiting pal is back right away.
 - **The notch's Story tab scrolled sideways.** A long file name or chapter title stretched every request card past the edge of the column, so a horizontal scrollbar appeared and the ends of lines ("Continue in ▾", "…was also changed by…") were cut off. Long titles now end in "…" and notes wrap, so everything fits the column.
 - **"+ N small steps" in the notch couldn't be opened.** It only said that steps were hidden. Click it (or press Enter) to show them; "Hide small steps" folds them again.
 
