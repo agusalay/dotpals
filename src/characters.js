@@ -16,6 +16,10 @@
 //                eyes are and how big, so the pal can swap in expression eyes
 //                (happy arcs, hearts…). Without it the normal eyes just squint.
 //                `own` lists expressions its own eyes already do (e.g. 'wide').
+//   hands      – optional [[x, y], [x, y]]: the shoulders (left, then right) where
+//                `<dot-pal hands>` hangs its little mitts. Pick the x where the body's
+//                outline crosses y≈156, so the mitt hangs just outside the body.
+//                Without it the element uses [[16, 156], [184, 156]].
 //   render(p)  – returns { defs, body, accessories, face } SVG strings
 //
 // `render` receives:
@@ -41,6 +45,7 @@ export const characters = {
     mouth: [102, 186],
     cheek: 34,
     eyes: { at: [[86, 160], [118, 160]], r: 10 },
+    hands: [[9, 156], [194, 156]],
     render: ({ id, body, fur }) => ({
       defs: `
         <radialGradient id="${id('beret')}" gradientUnits="userSpaceOnUse" cx="70" cy="50" r="110">
@@ -77,6 +82,7 @@ export const characters = {
     mouth: [100, 142],
     cheek: 52,
     eyes: { at: [[64, 96], [136, 96]], r: 17, own: ['wide'] },
+    hands: [[19, 156], [181, 156]],
     render: ({ id, body }) => ({
       defs: `
         <radialGradient id="${id('eyeball')}" cx=".4" cy=".35" r=".7">
@@ -114,6 +120,7 @@ export const characters = {
     mouth: [100, 176],
     cheek: 36,
     eyes: { at: [[74, 137], [126, 137]], r: 12 },
+    hands: [[17, 156], [183, 156]],
     render: ({ body }) => ({
       defs: '',
       body: `
@@ -137,6 +144,7 @@ export const characters = {
     mouth: [100, 170],
     cheek: 38,
     eyes: { at: [[76, 134], [124, 134]], r: 11, ink: '#fff' },
+    hands: [[10, 156], [190, 156]],
     render: ({ id, body }) => ({
       defs: `
         <radialGradient id="${id('lens')}" cx=".35" cy=".3" r=".8">
@@ -170,6 +178,7 @@ export const characters = {
     mouth: [100, 178],
     cheek: 36,
     eyes: { at: [[80, 144], [120, 144]], r: 11 },
+    hands: [[17, 156], [183, 156]],
     render: ({ body }) => ({
       defs: '',
       body: `
@@ -202,6 +211,7 @@ export const characters = {
     mouth: [100, 182],
     cheek: 46,
     eyes: { at: [[76.5, 127], [123.5, 127]], r: 12, ink: '#dff4ff', glow: true },
+    hands: [[17, 156], [183, 156]],
     render: ({ id, body }) => ({
       defs: `
         <filter id="${id('glow')}" x="-80%" y="-80%" width="260%" height="260%">
@@ -229,6 +239,7 @@ export const characters = {
     mouth: [100, 172],
     cheek: 40,
     eyes: { at: [[78, 142], [122, 142]], r: 11 },
+    hands: [[13, 156], [187, 156]],
     render: ({ id, body }) => ({
       defs: `
         <radialGradient id="${id('bulb')}" cx=".4" cy=".35" r=".7">
@@ -257,6 +268,7 @@ export const characters = {
     mouth: [100, 174],
     cheek: 42,
     eyes: { at: [[75, 137], [125, 137]], r: 11 },
+    hands: [[19, 156], [181, 156]],
     render: ({ body }) => ({
       defs: '',
       body: `

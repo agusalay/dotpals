@@ -131,22 +131,34 @@ export const actions = {
       { transform: 'rotateY(720deg) scale(1, 1)' },
     ],
   },
-  // Three quick little hops, each a little lower, like it can't sit still.
+  // Bounces like a dropped rubber ball: one real hop, then two smaller bounces, each
+  // lower and quicker, squashing less on every landing. Ease-out going up, ease-in
+  // coming down, so it hangs at the top. `.dp-actor` scales from its bottom edge, so
+  // the squash presses into the floor. Played now and then by `playful` pals.
   'playful-hop': {
-    duration: 1250,
+    duration: 1700,
     easing: 'linear',
     keyframes: [
       { transform: squashStretch(0, 1, 1), easing: 'cubic-bezier(.3,.6,.5,1)' },
-      { transform: squashStretch(0, 1.08, 0.92), offset: 0.07, easing: 'cubic-bezier(.2,.8,.3,1)' },
-      { transform: squashStretch(-11, 0.95, 1.06), offset: 0.2, easing: 'cubic-bezier(.6,0,.9,.5)' },
-      { transform: squashStretch(1.5, 1.08, 0.92), offset: 0.34, easing: 'cubic-bezier(.3,.7,.4,1)' },
-      { transform: squashStretch(0, 1, 1), offset: 0.4 },
-      { transform: squashStretch(0, 1.07, 0.93), offset: 0.48, easing: 'cubic-bezier(.2,.8,.3,1)' },
-      { transform: squashStretch(-9, 0.96, 1.05), offset: 0.6, easing: 'cubic-bezier(.6,0,.9,.5)' },
-      { transform: squashStretch(1, 1.06, 0.93), offset: 0.73, easing: 'cubic-bezier(.3,.7,.4,1)' },
-      { transform: squashStretch(0, 1, 1), offset: 0.78 },
-      { transform: squashStretch(0, 1.05, 0.95), offset: 0.85, easing: 'cubic-bezier(.2,.8,.3,1)' },
-      { transform: squashStretch(-6, 0.97, 1.03), offset: 0.93, easing: 'ease-in-out' },
+      // crouch, then spring up stretched
+      { transform: squashStretch(0, 1.12, 0.88), offset: 0.065, easing: 'cubic-bezier(.2,.8,.3,1)' },
+      { transform: squashStretch(-3, 0.9, 1.12), offset: 0.088, easing: 'cubic-bezier(.2,.7,.4,1)' },
+      // bounce 1: peak -20%
+      { transform: squashStretch(-20, 0.97, 1.04), offset: 0.265, easing: 'cubic-bezier(.6,0,.8,.3)' },
+      { transform: squashStretch(-2, 0.92, 1.1), offset: 0.418, easing: 'linear' },
+      { transform: squashStretch(0, 1.16, 0.84), offset: 0.441, easing: 'cubic-bezier(.3,.7,.4,1)' },
+      // bounce 2: peak -9%
+      { transform: squashStretch(-1.5, 0.94, 1.07), offset: 0.465, easing: 'cubic-bezier(.2,.7,.4,1)' },
+      { transform: squashStretch(-9, 0.98, 1.02), offset: 0.582, easing: 'cubic-bezier(.6,0,.8,.3)' },
+      { transform: squashStretch(-1, 0.95, 1.06), offset: 0.688, easing: 'linear' },
+      { transform: squashStretch(0, 1.1, 0.9), offset: 0.706, easing: 'cubic-bezier(.3,.7,.4,1)' },
+      // bounce 3: peak -3.5%
+      { transform: squashStretch(-1, 0.97, 1.04), offset: 0.726, easing: 'cubic-bezier(.2,.7,.4,1)' },
+      { transform: squashStretch(-3.5, 0.99, 1.01), offset: 0.8, easing: 'cubic-bezier(.6,0,.8,.3)' },
+      { transform: squashStretch(0, 1.05, 0.95), offset: 0.871, easing: 'ease-out' },
+      // settle wobble
+      { transform: squashStretch(0, 0.98, 1.02), offset: 0.918, easing: 'ease-in-out' },
+      { transform: squashStretch(0, 1.01, 0.99), offset: 0.959, easing: 'ease-in-out' },
       { transform: squashStretch(0, 1, 1) },
     ],
   },
@@ -166,7 +178,63 @@ export const actions = {
       { transform: squashStretch(0, 1, 1) },
     ],
   },
+  // The body's part of a wave (pal.wave()): a gentle rock while the hand waves.
+  wave: {
+    duration: 1200,
+    easing: 'ease-in-out',
+    keyframes: [
+      { transform: 'rotate(0deg)' },
+      { transform: 'rotate(-2.5deg)', offset: 0.25 },
+      { transform: 'rotate(2deg)', offset: 0.5 },
+      { transform: 'rotate(-1.5deg)', offset: 0.75 },
+      { transform: 'rotate(0deg)' },
+    ],
+  },
+  // "Oh, you're back!" (pal.startle()): a small, quick surprised jump.
+  startle: {
+    duration: 700,
+    easing: 'linear',
+    keyframes: [
+      { transform: squashStretch(0, 1, 1), easing: 'cubic-bezier(.3,.6,.5,1)' },
+      { transform: squashStretch(0, 1.06, 0.94), offset: 0.1, easing: 'cubic-bezier(.2,.8,.3,1)' },
+      { transform: squashStretch(-9, 0.92, 1.1), offset: 0.34, easing: 'cubic-bezier(.6,0,.8,.4)' },
+      { transform: squashStretch(0, 1.08, 0.92), offset: 0.6, easing: 'cubic-bezier(.3,.7,.4,1)' },
+      { transform: squashStretch(0, 0.98, 1.02), offset: 0.8, easing: 'ease-in-out' },
+      { transform: squashStretch(0, 1, 1) },
+    ],
+  },
+  // A slow, soft squish while it's being petted (playful pals).
+  pet: {
+    duration: 900,
+    easing: 'ease-in-out',
+    keyframes: [
+      { transform: 'scale(1, 1)' },
+      { transform: 'scale(1.05, .95)', offset: 0.35 },
+      { transform: 'scale(.98, 1.02)', offset: 0.7 },
+      { transform: 'scale(1, 1)' },
+    ],
+  },
+  // High five without hands (pal.highFive()): lean and hop toward that side.
+  'high-five-left': towardSide(-1),
+  'high-five-right': towardSide(1),
 };
+
+/** Lean and hop toward a side (-1 left, 1 right), the "slap" at ~41 % (450 ms), then back. */
+function towardSide(s) {
+  const t = (x, y, deg, sx = 1, sy = 1) => `translateX(${x * s}%) translateY(${y}%) rotate(${deg * s}deg) scale(${sx}, ${sy})`;
+  return {
+    duration: 1100,
+    easing: 'linear',
+    keyframes: [
+      { transform: t(0, 0, 0), easing: 'ease-out' },
+      { transform: t(-2, 0, -2, 1.05, 0.95), offset: 0.15, easing: 'cubic-bezier(.2,.8,.3,1)' },
+      { transform: t(6, -8, 6, 0.96, 1.05), offset: 0.41, easing: 'cubic-bezier(.6,0,.8,.4)' },
+      { transform: t(4, 0, 3, 1.06, 0.94), offset: 0.6, easing: 'cubic-bezier(.3,.7,.4,1)' },
+      { transform: t(1, 0, 1), offset: 0.85, easing: 'ease-in-out' },
+      { transform: t(0, 0, 0) },
+    ],
+  };
+}
 
 /** Add (or replace) an action usable with `pal.play(name)`. */
 export function registerAction(name, { keyframes, duration = 600, easing = 'ease-out', particles } = {}) {

@@ -442,6 +442,7 @@ pal.say('Hi! Ask me anything.');
 pal.flash('surprised', 1500);
 
 // One-shot actions: jump · squish · wiggle · shake · nod · spin · love · hop · jitter · hello · dizzy
+// · playful-hop · feed · wave · startle · pet · high-five-left · high-five-right
 await pal.play('love');
 
 // Say hello: rise up from below, squint happily, hop and blink twice
@@ -452,12 +453,25 @@ await pal.emote('love', 1600);
 
 // Throw particles: heart · sparkle · star · sweat · z, or any text or emoji
 pal.burst('sparkle', 8);
+
+// Pal to pal (best with the hands attribute): each resolves when it's done
+await pal.wave('right');      // a hand waves; without hands, a wiggle
+await pal.startle();          // "oh, you're back!": wide eyes, then happy
+await pal.highFive('left');   // hand up and out, sparkles at the slap (~450 ms)
+await pal.glance('left', 1500); // look at a neighbour, then back to the cursor
+
+// A treat: a cookie bobs beside the pal; clicking it calls feed()
+pal.showFood();
+pal.hideFood();
+pal.feed(); // a hop and a chomp, a happy face and hearts
 ```
 
 ### Faces and reactions
 
 - **Expression eyes**: pals swap in happy arcs, closed lids, wide eyes, × ("oops"), spinning spirals, hearts and sparkle-stars to match their mood (happy, sleepy, surprised or waiting, and the error state) or an `emote()`.
 - **Reactions**: hover and it blinks; rest the mouse on it for 2 seconds and it gets heart eyes; click and it plays its tap action with a "hey" face; click 3 times quickly and it gets dizzy. Each click fires `dotpal-poke` with `{ count }`. `static` turns these off.
+- **Playful** (opt-in, the `playful` attribute): while calm and idle, the pal bounces like a ball every 8 to 15 seconds, and stroking it slowly back and forth closes its eyes happily, with a few hearts and a `dotpal-pet` event (at most every 6 seconds). Never while `static`; no bounce with reduced motion.
+- **Hands** (opt-in, the `hands` attribute): two little mitts at the pal's sides that sway, wave, fly up on `startle()` and do high fives. Hidden while tiny; no sway with reduced motion. Characters set where they hang with `hands: [[x, y], [x, y]]`.
 - **Tiny pals**: under 48 px a pal becomes an avatar (the `tiny` attribute and the read-only `pal.tiny` property): no fur, bigger eyes, no glow and no particles.
 - **Pointing from outside the page**: `DotPal.pointAt(x, y)` tells every pal where the cursor is (viewport CSS px), for apps that track it themselves. `DotPal.emotes` lists every emote.
 
@@ -473,7 +487,9 @@ pal.burst('sparkle', 8);
 | `idle`      | `breathe` · `bounce` · `float` · `wobble` · `sway` · `none` | `breathe` |
 | `look`      | `cursor` · `none` | `cursor` |
 | `lean`      | `none`: the body doesn't lean toward the cursor | leans a little |
-| `static`    | boolean: turns off the hover and click reactions | – |
+| `static`    | boolean: turns off the hover and click reactions (and `playful`) | – |
+| `playful`   | boolean: a ball-bounce hop now and then while idle, and petting | – |
+| `hands`     | boolean: little mitt hands at the sides | – |
 | `label`     | accessible name | the character's name |
 | `tiny`      | set by the pal itself while it's smaller than 48 px | – |
 
@@ -486,6 +502,7 @@ pal.addEventListener('dotpal-state',  (e) => e.detail); // { state, text }
 pal.addEventListener('dotpal-mood',   (e) => e.detail); // { mood }
 pal.addEventListener('dotpal-action', (e) => e.detail); // { action }
 pal.addEventListener('dotpal-poke',   (e) => e.detail); // { count }: quick clicks in a row
+pal.addEventListener('dotpal-pet',    () => {});        // a playful pal was petted
 ```
 
 ### Styling
@@ -499,9 +516,10 @@ dot-pal {
 
 dot-pal::part(bubble) { background: #111; color: #fff; }
 dot-pal::part(svg)    { filter: drop-shadow(0 10px 20px rgb(0 0 0 / .4)); }
+dot-pal::part(food)   { left: auto; right: -14%; } /* the treat, on the other side */
 ```
 
-The parts you can style are `root`, `idle`, `actor`, `svg` and `bubble`.
+The parts you can style are `root`, `idle`, `actor`, `svg`, `bubble` and `food` (the treat button from `showFood()`).
 
 ### Frameworks
 

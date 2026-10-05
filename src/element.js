@@ -60,6 +60,74 @@ const EMOTE_FACES = {
 };
 export const EMOTES = Object.keys(EMOTE_FACES);
 
+/**
+ * @internal Whether a pal does its opt-in idle extras (the playful hop, petting):
+ * only with the `playful` attribute, and never when it's `static`.
+ */
+export const isPlayful = (el) => !!el?.hasAttribute?.('playful') && !el.hasAttribute('static');
+
+// ---------------------------------------------------------------------------
+// Hands (<dot-pal hands>): two stubby mitts hung from the shoulders. Each arm is
+// drawn as the right one, hanging down from (0, 0); the left one is mirrored, so
+// the same rotation raises either hand up and out (negative = outward).
+
+/** Shoulders when a character doesn't say (`hands` in characters.js). */
+const DEFAULT_HANDS = [[16, 156], [184, 156]];
+const MITT = [5, 23]; // the mitt's centre, from the shoulder
+
+/** @internal The shoulders a character's hands hang from. */
+export const handAnchors = (def) =>
+  Array.isArray(def?.hands) && def.hands.length === 2 && def.hands.every((p) => p?.length === 2 && p.every(Number.isFinite))
+    ? def.hands : DEFAULT_HANDS;
+
+/** @internal SVG markup for both arms, in the pal's 200×200 viewBox. */
+export function armsSVG(hands) {
+  return `<g class="dp-arms">${hands.map(([x, y], i) => `
+    <g class="dp-arm dp-arm-${i ? 'r' : 'l'}" transform="translate(${x} ${y})${i ? '' : ' scale(-1 1)'}">
+      <g class="dp-arm-p"><g class="dp-arm-s">
+        <path class="dp-arm-edge" d="M1.5 6 Q5 12 5 ${MITT[1] - 4}"/>
+        <path class="dp-arm-fill" d="M0 0 Q5 11 5 ${MITT[1] - 4}"/>
+        <circle class="dp-mitt" cx="${MITT[0]}" cy="${MITT[1]}" r="9"/>
+        <path class="dp-mitt-shine" d="M1.5 19.5 Q4.5 16.5 8.5 18"/>
+      </g></g>
+    </g>`).join('')}</g>`;
+}
+
+// Arm moves, played on `.dp-arm-p` (the sway runs underneath, on `.dp-arm-s`).
+const WAVE_ARM = [
+  { transform: 'rotate(0deg)', easing: 'cubic-bezier(.3,.7,.4,1)' },
+  { transform: 'rotate(-150deg)', offset: 0.22, easing: 'ease-in-out' },
+  { transform: 'rotate(-122deg)', offset: 0.36, easing: 'ease-in-out' },
+  { transform: 'rotate(-152deg)', offset: 0.5, easing: 'ease-in-out' },
+  { transform: 'rotate(-122deg)', offset: 0.64, easing: 'ease-in-out' },
+  { transform: 'rotate(-150deg)', offset: 0.76, easing: 'cubic-bezier(.5,0,.6,1)' },
+  { transform: 'rotate(0deg)' },
+];
+const STARTLE_ARMS = [
+  { transform: 'rotate(0deg)', easing: 'cubic-bezier(.2,.8,.3,1)' },
+  { transform: 'rotate(-125deg)', offset: 0.22, easing: 'ease-in-out' },
+  { transform: 'rotate(-105deg)', offset: 0.5, easing: 'cubic-bezier(.5,0,.6,1)' },
+  { transform: 'rotate(0deg)' },
+];
+// 1100 ms: a little wind-up, the slap at 41 % (~450 ms), a beat up there, then down.
+const HIGH_FIVE_ARM = [
+  { transform: 'rotate(0deg)', easing: 'cubic-bezier(.4,0,.6,1)' },
+  { transform: 'rotate(18deg)', offset: 0.14, easing: 'cubic-bezier(.3,0,.2,1)' },
+  { transform: 'rotate(-118deg)', offset: 0.41, easing: 'cubic-bezier(.2,.9,.3,1)' },
+  { transform: 'rotate(-108deg)', offset: 0.5, easing: 'ease-in-out' },
+  { transform: 'rotate(-112deg)', offset: 0.62, easing: 'cubic-bezier(.5,0,.6,1)' },
+  { transform: 'rotate(0deg)' },
+];
+/** @internal The arm moves, for tests. */
+export const ARM_MOVES = { wave: WAVE_ARM, startle: STARTLE_ARMS, highFive: HIGH_FIVE_ARM };
+
+// Petting: slow strokes back and forth over the pal.
+const PET_FLIPS = 3;      // direction changes…
+const PET_WINDOW = 1600;  // …within this many ms
+const PET_SPEED = 1.5;    // px/ms: faster is a swipe, not a pet
+const PET_STROKE = 10;    // px a stroke must travel before turning back counts
+const PET_GAP = 400;      // ms without movement starts over
+
 /** @internal A little cookie, for the "feed me" treat. */
 const FOOD_SVG =
   '<svg viewBox="0 0 40 40" aria-hidden="true">' +
@@ -304,6 +372,29 @@ const styles = `
   .dp-spiral.dp-ccw { animation-direction: reverse; }
   @keyframes dp-rot { to { transform: rotate(360deg); } }
 
+  /* -- hands (<dot-pal hands>) -------------------------------------------- */
+  /* Drawn inside the pal's SVG (so they move and squash with the body). Each arm
+     turns from its shoulder: .dp-arm-p for gestures, .dp-arm-s for the idle sway. */
+  .dp-arm-p, .dp-arm-s { transform-box: view-box; transform-origin: 0 0; }
+  .dp-arm-fill { fill: none; stroke: color-mix(in srgb, var(--dp-c) 84%, #000); stroke-width: 8; stroke-linecap: round; }
+  .dp-arm-edge { fill: none; stroke: rgb(0 0 0 / .16); stroke-width: 10.5; stroke-linecap: round; }
+  .dp-mitt { fill: color-mix(in srgb, var(--dp-c) 92%, #fff); stroke: color-mix(in srgb, var(--dp-c) 62%, #000); stroke-width: 2.4; }
+  .dp-mitt-shine { fill: none; stroke: #fff; stroke-opacity: .55; stroke-width: 2.2; stroke-linecap: round; }
+  .dp-arm-s { animation: dp-arm-sway 3.2s ease-in-out infinite var(--dp-delay, 0s); }
+  .dp-arm-l .dp-arm-s { animation-delay: calc(var(--dp-delay, 0s) - 1.1s); }
+  /* A little extra swing while the body bounces. */
+  :host([idle="bounce"]) .dp-arm-s { animation: dp-arm-bob 1.3s ease-in-out infinite var(--dp-delay, 0s); }
+  :host([mood="happy"]) .dp-arm-s { animation: dp-arm-bob .9s ease-in-out infinite; }
+  :host([tiny]) .dp-arms { display: none; }
+  @keyframes dp-arm-sway {
+    0%, 100% { transform: rotate(-2deg); }
+    50%      { transform: rotate(6deg); }
+  }
+  @keyframes dp-arm-bob {
+    0%, 100% { transform: rotate(-3deg); }
+    50%      { transform: rotate(13deg); }
+  }
+
   /* -- idle loops ---------------------------------------------------------- */
 
   .dp-idle { animation: dp-breathe 3.4s ease-in-out infinite var(--dp-delay, 0s); }
@@ -533,7 +624,7 @@ const styles = `
   .dp-particle text { fill: var(--dp-c); }
 
   @media (prefers-reduced-motion: reduce) {
-    .dp-idle, .dp-pose, .dp-spiral, .dp-glow, .dp-food { animation: none !important; }
+    .dp-idle, .dp-pose, .dp-spiral, .dp-glow, .dp-food, .dp-arm-s { animation: none !important; }
     .dp-look, .dp-blink, .dp-fs, .dp-ae-s, .dp-turn, .dp-pose { transition: none; }
     .dp-dots i { animation: none; opacity: .7; }
   }
@@ -631,7 +722,7 @@ let scriptSeq = 0;
 // ---------------------------------------------------------------------------
 
 export class DotPal extends Base {
-  static observedAttributes = ['character', 'color', 'size', 'label', 'mood', 'state', 'idle', 'lean'];
+  static observedAttributes = ['character', 'color', 'size', 'label', 'mood', 'state', 'idle', 'lean', 'hands', 'playful', 'static'];
 
   #n = ++uid;
   #uid = `dp${this.#n}`;
@@ -686,6 +777,12 @@ export class DotPal extends Base {
   #food = null;
   #foodShown = false;
   #hopTimer = 0;
+  #gesture = 0; // wave / startle / high five running (the idle hop waits)
+  #armAnims = new Map(); // arm element → the gesture running on it
+  #glanceTok = 0;
+  #glancing = false;
+  #pet = { x: 0, t: 0, dir: 0, run: 0, flips: [] };
+  #lastPet = 0;
 
   constructor() {
     super();
@@ -724,7 +821,11 @@ export class DotPal extends Base {
       if (!this.#anim && !reducedMotion()) this.play('squish');
       this.#armStill(e);
     });
-    this.addEventListener('pointermove', (e) => { if (!this.static) this.#armStill(e); }, { passive: true });
+    this.addEventListener('pointermove', (e) => {
+      if (this.static) return;
+      this.#armStill(e);
+      if (isPlayful(this)) this.#trackPet(e);
+    }, { passive: true });
     this.addEventListener('pointerleave', () => {
       clearTimeout(this.#stillTimer);
       if (!this.#hover) return;
@@ -800,6 +901,7 @@ export class DotPal extends Base {
     else if (name === 'label') this.#applyLabel();
     else if (name === 'state') this.#applyState();
     else if (name === 'lean') this.#lean(this.#gaze.x);
+    else if (name === 'playful' || name === 'static') this.#scheduleHop(); // starts or stops the idle hop now
     else if (this.#def) this.#render();
   }
 
@@ -840,6 +942,14 @@ export class DotPal extends Base {
 
   get static() { return this.hasAttribute('static'); }
   set static(v) { this.toggleAttribute('static', !!v); }
+
+  /** Idle extras: a ball-bounce hop every 8–15 s while calm, and petting (the `playful` attribute; off by default). */
+  get playful() { return this.hasAttribute('playful'); }
+  set playful(v) { this.toggleAttribute('playful', !!v); }
+
+  /** Little mitt hands at the pal's sides (the `hands` attribute; off by default). */
+  get hands() { return this.hasAttribute('hands'); }
+  set hands(v) { this.toggleAttribute('hands', !!v); }
 
   /** True when the pal is drawn smaller than 48 px (set automatically as the `tiny` attribute). */
   get tiny() { return this.#tiny; }
@@ -1043,6 +1153,166 @@ export class DotPal extends Base {
     this.#food.hidden = true;
   }
 
+  // -- hands & pal-to-pal ----------------------------------------------------
+
+  /**
+   * Wave hello: one hand (`'right'` by default) rises and waves a few times, with a
+   * happy face. Without `hands`, a little wiggle instead. Resolves when it's done.
+   */
+  wave(side = 'right') {
+    const i = side === 'left' ? 0 : 1;
+    const calm = reducedMotion();
+    const owner = {};
+    const arm = this.#arms()[i];
+    if (!calm) {
+      if (arm) {
+        this.#playArm(arm, WAVE_ARM, 1200);
+        if (!this.#anim) this.play('wave');
+      } else this.play('wiggle');
+    }
+    return this.#gestureRun('wave', [
+      { from: 0, to: 1300, enter: () => this.#setFace(EMOTE_FACES.happy, owner), exit: () => this.#clearFace(owner) },
+    ], 1300);
+  }
+
+  /**
+   * "Oh, you're back!": a small surprised jump with wide eyes (and hands flying up),
+   * then a happy face for a moment. A sleepy pal wakes up (its `state` is left alone).
+   */
+  startle() {
+    const calm = reducedMotion();
+    const wide = {};
+    const glad = {};
+    if (this.mood === 'sleepy') this.mood = 'neutral';
+    if (!calm) {
+      this.play('startle');
+      for (const arm of this.#arms()) this.#playArm(arm, STARTLE_ARMS, 700);
+    }
+    return this.#gestureRun('startle', [
+      { from: 0, to: 700, enter: () => this.#setFace(EMOTE_FACES.wide, wide), exit: () => this.#clearFace(wide) },
+      { from: 700, to: 2200, enter: () => this.#setFace(EMOTE_FACES.happy, glad), exit: () => this.#clearFace(glad) },
+    ], 2200);
+  }
+
+  /**
+   * High five a neighbour on `side` (`'left'` or `'right'`): the hand swings up and
+   * out, sparkles fly at the slap (~450 ms), then it comes back down with a happy
+   * face. Without `hands`, the pal leans and hops that way. Resolves when it's done.
+   */
+  highFive(side = 'right') {
+    const s = side === 'left' ? -1 : 1;
+    const calm = reducedMotion();
+    const owner = {};
+    const arm = this.#arms()[s < 0 ? 0 : 1];
+    // Where the mitt is at the slap (the arm turned 118° up and out), in % of the pal.
+    const [hx, hy] = handAnchors(this.#def)[s < 0 ? 0 : 1];
+    const a = (-118 * Math.PI) / 180;
+    const tip = arm
+      ? { left: (hx + s * (MITT[0] * Math.cos(a) - MITT[1] * Math.sin(a))) / 2, top: (hy + MITT[0] * Math.sin(a) + MITT[1] * Math.cos(a)) / 2 }
+      : { left: s < 0 ? 6 : 94, top: 44 };
+    if (!calm) {
+      if (arm) this.#playArm(arm, HIGH_FIVE_ARM, 1100);
+      else this.play(`high-five-${s < 0 ? 'left' : 'right'}`);
+    }
+    return this.#gestureRun('high-five', [
+      { at: 450, do: () => { this.#burst('star', 3, tip); this.#burst('sparkle', 4, tip); } },
+      { from: 480, to: 1700, enter: () => this.#setFace(EMOTE_FACES.happy, owner), exit: () => this.#clearFace(owner) },
+    ], 1700);
+  }
+
+  /**
+   * Look toward `side` (`'left'` or `'right'`) for `ms`, over whatever the cursor is
+   * doing, then go back to the usual gaze. Resolves when the eyes are back.
+   */
+  glance(side = 'right', ms = 1500) {
+    const s = side === 'left' ? -1 : 1;
+    const tok = ++this.#glanceTok;
+    this.#glancing = true;
+    this.lookAt(s * 0.95, 0.1);
+    this.#lean(s * 0.6);
+    return new Promise((resolve) => setTimeout(() => {
+      if (tok === this.#glanceTok) {
+        this.#glancing = false;
+        const gaze = FIXED_GAZE[this.mood];
+        this.lookAt(...(gaze ?? [0, 0]));
+        this.#lean(0);
+        this._followPointer();
+      }
+      resolve();
+    }, Math.max(0, Number(ms) || 0)));
+  }
+
+  /** The arms' gesture layers, left then right (none without `hands`, or when tiny). */
+  #arms() {
+    if (!this.hands || this.#tiny || !this.#svg) return [];
+    return [...this.#svg.querySelectorAll('.dp-arm-p')];
+  }
+
+  #playArm(el, keyframes, duration) {
+    if (typeof el.animate !== 'function') return;
+    this.#armAnims.get(el)?.cancel();
+    const anim = el.animate(keyframes, { duration, easing: 'linear' });
+    this.#armAnims.set(el, anim);
+    anim.finished.then(() => { if (this.#armAnims.get(el) === anim) this.#armAnims.delete(el); }, () => {});
+  }
+
+  /** A gesture's face timeline; the idle hop waits while any gesture runs. */
+  #gestureRun(channel, cues, length) {
+    this.#gesture++;
+    return this.#run(channel, cues, length).finally(() => { this.#gesture--; });
+  }
+
+  /**
+   * Petting (`playful` pals only): slow strokes back and forth over the pal (a few
+   * turns within ~1.6 s, no buttons). It closes its eyes happily, squishes softly and
+   * a few hearts float up; `dotpal-pet` tells the page. At most once every 6 s.
+   */
+  #trackPet(e) {
+    const p = this.#pet;
+    const now = performance.now();
+    if (e.buttons || e.pointerType === 'touch' || now - p.t > PET_GAP) {
+      Object.assign(p, { x: e.clientX, t: now, dir: 0, run: 0, flips: [] });
+      return;
+    }
+    const dx = e.clientX - p.x;
+    const dt = Math.max(1, now - p.t);
+    p.x = e.clientX;
+    p.t = now;
+    if (Math.abs(dx) / dt > PET_SPEED) { Object.assign(p, { dir: 0, run: 0, flips: [] }); return; } // a swipe
+    if (!dx) return;
+    const dir = Math.sign(dx);
+    if (dir === p.dir) p.run += Math.abs(dx);
+    else {
+      if (p.dir && p.run >= PET_STROKE) p.flips.push(now);
+      p.dir = dir;
+      p.run = Math.abs(dx);
+    }
+    p.flips = p.flips.filter((t) => now - t < PET_WINDOW);
+    if (p.flips.length >= PET_FLIPS) {
+      p.flips = [];
+      this.#petted();
+    }
+  }
+
+  #petted() {
+    const now = Date.now();
+    if (!this.isConnected || !isPlayful(this) || this.#dizzy || now - this.#lastPet < 6000 || now - this.#lastLove < 2000) return;
+    this.#lastPet = now;
+    clearTimeout(this.#stillTimer); // the hover "love" waits its turn
+    const owner = {};
+    if (!reducedMotion() && !this.#anim) this.play('pet');
+    this.#run('pet', [
+      {
+        from: 0,
+        to: 1800,
+        enter: () => this.#setFace({ eyes: 'closed', mouth: 'happy', cheeks: true }, owner),
+        exit: () => this.#clearFace(owner),
+      },
+      { at: 200, do: () => this.#burst('heart', 3) },
+    ], 1800);
+    this.dispatchEvent(new CustomEvent('dotpal-pet', { bubbles: true, composed: true }));
+  }
+
   /**
    * Show progress for an async task: `thinking` while it runs, then `happy`
    * (and a jump) on success or `sad` (and a jitter) on failure. The previous
@@ -1170,7 +1440,7 @@ export class DotPal extends Base {
 
   /** @internal Called by the shared pointer tracker. */
   _followPointer() {
-    if (this.look === 'none' || FIXED_GAZE[this.mood]) return;
+    if (this.look === 'none' || FIXED_GAZE[this.mood] || this.#glancing) return;
     const r = this.getBoundingClientRect();
     if (!r.width || r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) return;
     const { x, y } = this.#target ?? pointer;
@@ -1404,7 +1674,7 @@ export class DotPal extends Base {
     this.#stillTimer = setTimeout(() => {
       if (!this.#hover || !this.isConnected || this.static || this.#dizzy) return;
       const now = Date.now();
-      if (now - this.#lastLove < 20_000) return;
+      if (now - this.#lastLove < 20_000 || now - this.#lastPet < 6000) return; // just petted: not both at once
       this.#lastLove = now;
       this.emote('love', 1800);
       if (!reducedMotion() && !this.#anim) this.play('squish');
@@ -1668,6 +1938,7 @@ export class DotPal extends Base {
       </defs>
       <g class="dp-body"${def.fur === false ? '' : ` filter="url(#${id('fur')})"`}>${parts.body}</g>
       ${parts.accessories || ''}
+      ${this.hands ? armsSVG(handAnchors(def)) : ''}
       <g class="dp-face">${parts.face || ''}</g>
       ${eyes ? `<g class="dp-alteyes"${glow}><g class="dp-ae-look">${eyes.at
         .map(([x, y]) => `<g transform="translate(${x} ${y})"><g class="dp-ae-s"></g></g>`)
@@ -1751,7 +2022,9 @@ export class DotPal extends Base {
       if (Math.random() < (busy ? 0.3 : 0.2)) setTimeout(() => this.blink(), 240);
       const still = this.look === 'none' || reducedMotion();
       const quietFor = this.#tiny ? 1500 : 4000;
-      if (!still && ACTIVE_GAZE[this.mood]) {
+      if (this.#glancing) {
+        // glance() has the eyes for now.
+      } else if (!still && ACTIVE_GAZE[this.mood]) {
         // Thinking: glance up one side, then the other. Working: scan like reading.
         this.lookAt(...ACTIVE_GAZE[this.mood]());
       } else if (!still && !this.#target && !FIXED_GAZE[this.mood] && performance.now() - pointer.t > quietFor) {
@@ -1763,19 +2036,23 @@ export class DotPal extends Base {
     }, busy ? rand(900, 2400) : this.#tiny ? rand(1600, 3600) : rand(2200, 5000));
   }
 
+  /** @internal Whether the idle hop timer is running (for tests). */
+  get _hopScheduled() { return !!this.#hopTimer; }
+
   /**
-   * While the pal is just idling (neutral, no agent), it can't quite sit still:
-   * every now and then it does a little playful hop. Only when it's truly calm
-   * (not working/thinking/speaking/waiting/sleepy, not mid-action, and the user
-   * hasn't asked for reduced motion).
+   * A `playful` pal that's just idling (neutral, no agent) can't quite sit still:
+   * every 8–15 s it does a ball-bounce hop. Only when it's truly calm (not
+   * working/thinking/speaking/waiting/sleepy, not mid-action or gesture), never when
+   * `static`, and not with reduced motion. Called again when `playful` or `static` changes.
    */
   #scheduleHop() {
     clearTimeout(this.#hopTimer);
     this.#hopTimer = 0;
-    if (!this.isConnected || reducedMotion() || this.#tiny) return;
+    if (!this.isConnected || !isPlayful(this) || reducedMotion() || this.#tiny) return;
     this.#hopTimer = setTimeout(() => {
-      if (!this.isConnected) return;
-      if (this.mood === 'neutral' && this.state === 'idle' && !this.#anim && !this.#dizzy && !this.#saying) {
+      this.#hopTimer = 0;
+      if (!this.isConnected || !isPlayful(this)) return;
+      if (this.mood === 'neutral' && this.state === 'idle' && !this.#anim && !this.#gesture && !this.#dizzy && !this.#saying) {
         this.play('playful-hop');
       }
       this.#scheduleHop();
@@ -1788,8 +2065,11 @@ export class DotPal extends Base {
     this.#burst('z', 1);
   }
 
-  /** Throw `count` particles of `kind` (a built-in shape, or any text glyph). */
-  #burst(kind, count = 6) {
+  /**
+   * Throw `count` particles of `kind` (a built-in shape, or any text glyph).
+   * `at` ({ left, top } in % of the pal) starts them from one spot, in a tight pop.
+   */
+  #burst(kind, count = 6, at = null) {
     if (!this.isConnected || this.#tiny || reducedMotion()) return;
     const box = this.getBoundingClientRect();
     const size = box.width || 160;
@@ -1831,6 +2111,13 @@ export class DotPal extends Base {
         dx = rand(-0.7, 0.7) * size;
         dy = -rand(0.25, 0.65) * size;
         delay = i * 60 + rand(0, 50);
+      }
+      if (at) {
+        ({ left, top } = at);
+        dx = rand(-0.28, 0.28) * size;
+        dy = -rand(0.12, 0.34) * size;
+        duration = rand(650, 950);
+        delay = i * 25;
       }
       // Drawn in an SVG layer over the pal: SVG content outside its box never adds scrollbars.
       const el = document.createElementNS(SVG_NS, 'g');

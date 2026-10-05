@@ -1,7 +1,12 @@
 export type BuiltInCharacter = 'blu' | 'hop' | 'sunny' | 'lovi' | 'muse' | 'grok' | 'nova' | 'byte';
 export type BuiltInAction =
   | 'jump' | 'squish' | 'wiggle' | 'shake' | 'nod' | 'spin' | 'love'
-  | 'hop' | 'jitter' | 'hello' | 'dizzy';
+  | 'hop' | 'jitter' | 'hello' | 'dizzy'
+  | 'playful-hop' | 'feed' | 'wave' | 'startle' | 'pet' | 'high-five-left' | 'high-five-right';
+/** Which side a hand gesture or glance goes to. */
+export type Side = 'left' | 'right';
+/** Parts you can style with `dot-pal::part(…)`. */
+export type DotPalPart = 'root' | 'idle' | 'actor' | 'svg' | 'bubble' | 'food';
 /** Faces for `pal.emote()`. */
 export type Emote = 'happy' | 'love' | 'star' | 'wide' | 'closed' | 'dizzy' | 'oops' | 'hey' | 'sweat';
 /** Built-in particle shapes (inline SVG, the same on every OS). */
@@ -41,6 +46,11 @@ export interface CharacterDefinition {
    * The parts marked `.dp-eyes` (or else `.dp-blink`) hide while they show.
    */
   eyes?: CharacterEyes;
+  /**
+   * The shoulders (left, then right) where `<dot-pal hands>` hangs its mitts, in
+   * viewBox units. Default: `[[16, 156], [184, 156]]`.
+   */
+  hands?: [[number, number], [number, number]];
   /**
    * Returns SVG markup for a 200×200 viewBox. `body` is wrapped in the fur
    * filter. Use `.dp-blink` and `.dp-look` classes to opt into blinking and
@@ -83,6 +93,14 @@ export declare class DotPal extends HTMLElement {
   state: AgentState;
   look: 'cursor' | 'none';
   static: boolean;
+  /**
+   * Idle extras, off by default (the `playful` attribute): a ball-bounce hop every
+   * 8–15 s while the pal is calm and idle, and petting (slow strokes back and forth
+   * fire `dotpal-pet`). Never while `static`; no hop with reduced motion.
+   */
+  playful: boolean;
+  /** Little mitt hands at the pal's sides (the `hands` attribute; off by default). Hidden while tiny. */
+  hands: boolean;
   // The pal leans slightly toward the pointer; the attribute lean="none" turns that off.
   /** True while the pal is drawn smaller than 48 px (reflected as the `tiny` attribute): no fur, bigger eyes. */
   readonly tiny: boolean;
@@ -116,6 +134,36 @@ export declare class DotPal extends HTMLElement {
   burst(kind?: ParticleKind | (string & {}), count?: number): void;
   blink(): void;
   lookAt(x?: number, y?: number): void;
+  /**
+   * Feed the pal: an excited hop and a "chomp", a happy face for ~3 s and a few
+   * hearts. Hides the treat. Clicking the treat calls this.
+   */
+  feed(): void;
+  /** Show the treat (a cookie, the `food` part) beside the pal. Does nothing while tiny or already shown. */
+  showFood(): void;
+  /** Take the treat away. */
+  hideFood(): void;
+  /**
+   * Wave with one hand (default `'right'`) a few times, ~1.2 s, with a happy face.
+   * Without `hands`, a small wiggle. Resolves when it's done.
+   */
+  wave(side?: Side): Promise<void>;
+  /**
+   * "Oh, you're back!": a small surprised jump with wide eyes (hands fly up), then a
+   * happy face for ~1.5 s. Wakes a sleepy face; `state` is left alone.
+   */
+  startle(): Promise<void>;
+  /**
+   * High five a neighbour on `side` (default `'right'`): the hand swings up and out,
+   * sparkles at the slap (~450 ms), then a happy face. Without `hands`, the pal leans
+   * and hops that way. Resolves when it's done.
+   */
+  highFive(side?: Side): Promise<void>;
+  /**
+   * Look toward `side` (default `'right'`) for `ms` (default 1500), over the cursor,
+   * then back to the usual gaze. Resolves when the eyes are back.
+   */
+  glance(side?: Side, ms?: number): Promise<void>;
 }
 
 export declare const characters: Record<string, CharacterDefinition>;
@@ -155,6 +203,8 @@ export declare function agentHandler(
 export interface DotPalActionEvent extends CustomEvent<{ action: string }> {}
 /** Fired on every click; `count` is how many quick clicks in a row (3 makes the pal dizzy). */
 export interface DotPalPokeEvent extends CustomEvent<{ count: number }> {}
+/** Fired when a `playful` pal is petted (slow strokes back and forth over it); at most every 6 s. */
+export interface DotPalPetEvent extends CustomEvent<null> {}
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -165,5 +215,6 @@ declare global {
     'dotpal-mood': CustomEvent<{ mood: Mood }>;
     'dotpal-state': CustomEvent<{ state: AgentState; text?: string }>;
     'dotpal-poke': DotPalPokeEvent;
+    'dotpal-pet': DotPalPetEvent;
   }
 }

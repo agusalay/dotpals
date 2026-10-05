@@ -13,37 +13,43 @@ const INK = '#0b0b12';
 
 // Bodies, in the same 200×200 box as the built-in pals (they run off the bottom edge).
 //   top: y of the top of the head; ears: where ears and horns attach; eyes: [y, spread];
-//   mouth: [x, y]; cheek: blush distance from the mouth.
+//   mouth: [x, y]; cheek: blush distance from the mouth; hands: shoulders for <dot-pal hands>.
 const SHAPES = {
   round: {
     label: 'Round',
     path: 'M12 262 L12 152 C12 98 52 72 100 72 C148 72 188 98 188 152 L188 262 Z',
     top: 72, ears: [[46, 98], [154, 98]], eyes: [140, 23], mouth: [100, 172], cheek: 42,
+    hands: [[13, 156], [187, 156]],
   },
   square: {
     label: 'Boxy',
     path: 'M14 262 L14 104 C14 72 36 52 68 52 L132 52 C164 52 186 72 186 104 L186 262 Z',
     top: 52, ears: [[38, 66], [162, 66]], eyes: [124, 26], mouth: [100, 164], cheek: 46,
+    hands: [[15, 156], [185, 156]],
   },
   blob: {
     label: 'Fluffy',
     path: 'M16 262 C2 240 0 206 16 190 C0 170 6 138 34 134 C30 108 56 92 82 100 C94 82 132 80 146 100 C172 96 196 118 186 146 C204 160 202 196 186 208 C196 226 192 250 186 262 Z',
     top: 86, ears: [[50, 108], [158, 106]], eyes: [158, 17], mouth: [102, 188], cheek: 34,
+    hands: [[9, 156], [194, 156]],
   },
   tall: {
     label: 'Pointy',
     path: 'M12 262 L14 180 C18 120 60 36 100 34 C140 36 182 120 186 180 L188 262 Z',
     top: 34, ears: [[70, 70], [130, 70]], eyes: [136, 25], mouth: [100, 174], cheek: 38,
+    hands: [[17, 156], [183, 156]],
   },
   heart: {
     label: 'Heart',
     path: 'M100 290 C58 254 8 204 8 132 C8 86 38 56 70 56 C86 56 96 64 100 78 C104 64 114 56 130 56 C162 56 192 86 192 132 C192 204 142 254 100 290 Z',
     top: 70, ears: [[52, 66], [148, 66]], eyes: [134, 25], mouth: [100, 170], cheek: 40,
+    hands: [[10, 156], [190, 156]],
   },
   bean: {
     label: 'Frog',
     path: 'M16 262 L16 176 C16 132 52 112 100 112 C148 112 184 132 184 176 L184 262 Z M28 100 A36 36 0 1 1 100 100 A36 36 0 1 1 28 100 Z M100 100 A36 36 0 1 1 172 100 A36 36 0 1 1 100 100 Z',
     top: 64, ears: [[40, 80], [160, 80]], eyes: [98, 36], mouth: [100, 146], cheek: 52,
+    hands: [[19, 156], [181, 156]],
   },
 };
 
@@ -151,6 +157,7 @@ export function buildCharacter(spec) {
     look: eyes.look,
     mouth: shape.mouth,
     cheek: shape.cheek,
+    hands: shape.hands, // shoulders for <dot-pal hands>
     // Where expression eyes (happy arcs, hearts…) go: on top of the drawn eyes.
     eyes: { at: [[100 - spread, eyeY], [100 + spread, eyeY]], ...eyes.alt(spread) },
     fur: s.fur,

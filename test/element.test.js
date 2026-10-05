@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   DotPal, EMOTES, MOOD_EYES, PARTICLE_KINDS,
   eyeShape, particleSVG, particleFrames, gazeFor, foreshorten,
+  isPlayful, handAnchors, armsSVG, ARM_MOVES,
 } from '../src/element.js';
 import { characters } from '../src/characters.js';
 import { actions } from '../src/actions.js';
@@ -114,6 +115,83 @@ test('new actions exist and settle back where they started', () => {
   assert.match(actions['playful-hop'].keyframes.at(-1).transform, /translateY\(0%\) scale\(1, 1\)/);
   assert.match(actions.feed.keyframes.at(-1).transform, /translateY\(0%\) scale\(1, 1\)/);
   assert.equal(actions.love.particles, 'heart');
+});
+
+test('pal-to-pal actions exist, ascend and end where they started', () => {
+  for (const name of ['playful-hop', 'feed', 'wave', 'startle', 'pet', 'high-five-left', 'high-five-right']) {
+    const a = actions[name];
+    assert.ok(a && a.keyframes.length > 2 && a.duration > 0, name);
+    const offsets = a.keyframes.map((k) => k.offset).filter((o) => o != null);
+    for (let i = 1; i < offsets.length; i++) assert.ok(offsets[i] > offsets[i - 1], name);
+    assert.ok(offsets.every((o) => o > 0 && o < 1), `${name}: offsets inside (0, 1)`);
+    assert.equal(a.keyframes.at(-1).transform, a.keyframes[0].transform, `${name} settles`);
+  }
+  // A ball bounce: three peaks, each lower than the last.
+  const ys = actions['playful-hop'].keyframes.map((k) => +/translateY\((-?[\d.]+)%\)/.exec(k.transform)[1]);
+  assert.equal(Math.min(...ys), -20);
+  assert.equal(actions['playful-hop'].duration, 1700);
+  // The hop-less high fives mirror each other.
+  assert.equal(actions['high-five-left'].keyframes[2].transform.replace(/-/g, ''), actions['high-five-right'].keyframes[2].transform.replace(/-/g, ''));
+  for (const [name, frames] of Object.entries(ARM_MOVES)) {
+    assert.equal(frames.at(-1).transform, frames[0].transform, `arm ${name} comes back down`);
+  }
+});
+
+test('hands hang from every character and custom shape, and draw cleanly', () => {
+  for (const [name, def] of Object.entries(characters)) {
+    const [[lx, ly], [rx, ry]] = handAnchors(def);
+    assert.ok(def.hands, `${name} says where its hands go`);
+    assert.ok(lx < 100 && rx > 100 && ly === ry, name);
+  }
+  for (const shape of Object.keys(CUSTOM_OPTIONS.shape)) {
+    assert.equal(buildCharacter({ shape }).hands?.length, 2, shape);
+  }
+  assert.deepEqual(handAnchors({}), [[16, 156], [184, 156]]); // a character without hands
+  assert.deepEqual(handAnchors({ hands: [[1, NaN], [2, 3]] }), [[16, 156], [184, 156]]); // junk
+  const svg = armsSVG(handAnchors(characters.blu));
+  clean(svg, 'arms');
+  assert.equal(svg.match(/class="dp-mitt"/g).length, 2);
+  assert.match(svg, /translate\(9 156\) scale\(-1 1\)/); // the left arm is mirrored
+});
+
+// No DOM in these tests: a stand-in shadow root and attributes, just enough to
+// construct a DotPal and watch the idle hop timer start and stop.
+function fakePal() {
+  const node = () => ({ addEventListener() {}, innerHTML: '', hidden: true, style: { setProperty() {} }, classList: { toggle() {}, add() {}, remove() {} } });
+  class Fake extends DotPal {
+    attrs = new Map();
+    connected = true;
+    get isConnected() { return this.connected; }
+    attachShadow() { return { set innerHTML(v) {}, querySelector: node }; }
+    addEventListener() {}
+    hasAttribute(n) { return this.attrs.has(n); }
+    getAttribute(n) { return this.attrs.get(n) ?? null; }
+    set(n, on) {
+      const old = this.getAttribute(n);
+      on ? this.attrs.set(n, '') : this.attrs.delete(n);
+      this.attributeChangedCallback(n, old, this.getAttribute(n));
+    }
+  }
+  return new Fake();
+}
+
+test('playful is opt-in: no idle hop without it, none while static, and toggling it starts and stops the hop', () => {
+  assert.equal(isPlayful(null), false);
+  const pal = fakePal();
+  assert.equal(pal._hopScheduled, false, 'a plain pal never hops');
+  pal.set('playful', true);
+  assert.equal(pal._hopScheduled, true, 'playful starts the hop at once');
+  pal.set('static', true);
+  assert.equal(pal._hopScheduled, false, 'static stops it');
+  pal.set('static', false);
+  assert.equal(pal._hopScheduled, true, 'and lets it go again');
+  pal.set('playful', false);
+  assert.equal(pal._hopScheduled, false, 'turning playful off stops it');
+  const quiet = fakePal();
+  quiet.set('static', true);
+  quiet.set('playful', true);
+  assert.equal(quiet._hopScheduled, false, 'a static pal never hops, even when playful');
+  quiet.set('playful', false);
 });
 
 test('DotPal.pointAt ignores junk and is safe without a DOM', () => {
